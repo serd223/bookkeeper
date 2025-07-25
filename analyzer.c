@@ -108,7 +108,7 @@ bool va_get_expect_tokens(stb_lexer* lex, int ids_count, va_list args) {
     return true;
 }
 
-bool peek_expect_ids(stb_lexer* lex, int ids_count, ...) {
+bool peek_ids(stb_lexer* lex, int ids_count, ...) {
     va_list args;
     va_start(args, ids_count);
     char* pp = lex->parse_point;
@@ -118,7 +118,7 @@ bool peek_expect_ids(stb_lexer* lex, int ids_count, ...) {
     return res;
 }
 
-bool peek_expect_tokens(stb_lexer* lex, int ids_count, ...) {
+bool peek_tokens(stb_lexer* lex, int ids_count, ...) {
     va_list args;
     va_start(args, ids_count);
     char* pp = lex->parse_point;
@@ -160,7 +160,7 @@ void analyze_file(String content, CTypes* types) {
             strct.kind = CCOMPOUND;
             for (;;) {
                 Field field = {0};
-                if (peek_expect_tokens(&lex, 5, CLEX_id, CLEX_id, '*', CLEX_id, ';') && peek_expect_ids(&lex, 2, "const", "char")) { 
+                if (peek_tokens(&lex, 5, CLEX_id, CLEX_id, '*', CLEX_id, ';') && peek_ids(&lex, 2, "const", "char")) { 
                     stb_c_lexer_get_token(&lex); // const
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
@@ -171,7 +171,7 @@ void analyze_file(String content, CTypes* types) {
                     field.type.type = CSTRING;
                     push_da(&strct.fields, field);
 
-                } else if (peek_expect_tokens(&lex, 4, CLEX_id, '*', CLEX_id, ';') && peek_expect_ids(&lex, 1, "char")) {
+                } else if (peek_tokens(&lex, 4, CLEX_id, '*', CLEX_id, ';') && peek_ids(&lex, 1, "char")) {
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
                     stb_c_lexer_get_token(&lex); // name
@@ -180,13 +180,13 @@ void analyze_file(String content, CTypes* types) {
                     field.type.kind = CPRIMITIVE;
                     field.type.type = CSTRING;
                     push_da(&strct.fields, field);
-                } else if (peek_expect_tokens(&lex, 3, CLEX_id, CLEX_id, ';')) {
+                } else if (peek_tokens(&lex, 3, CLEX_id, CLEX_id, ';')) {
                     bool is_known_primitive = true;
-                    if (peek_expect_ids(&lex, 1, "int")) {
+                    if (peek_ids(&lex, 1, "int") || peek_ids(&lex, 1, "size_t")) {
                         field.type.type = CINT;
-                    } else if (peek_expect_ids(&lex, 1, "double")) {
+                    } else if (peek_ids(&lex, 1, "double") || peek_ids(&lex, 1, "float")) {
                         field.type.type = CFLOAT;
-                    } else if (peek_expect_ids(&lex, 1, "bool")) {
+                    } else if (peek_ids(&lex, 1, "bool")) {
                         field.type.type = CBOOL;
                     } else {
                         is_known_primitive = false;
@@ -224,13 +224,14 @@ void analyze_file(String content, CTypes* types) {
 
 char tmp_str[1024];
 int main(int argc, char** argv) {
-    DIR* pwd;
+    char* root_dir;
     if (argc > 1) {
         // normally you should escape this but who cares tbh
-        pwd = opendir(argv[1]);
+        root_dir = argv[1];
     } else {
-        pwd = opendir("./examples");
+        root_dir = "./examples";
     }
+    DIR* pwd = opendir(root_dir);
     if (!pwd) return 1;
 
     CTypes types = {0}; // leaks (static data)
@@ -243,7 +244,7 @@ int main(int argc, char** argv) {
             ) {
                 printf("Analyzing file: %s\n", ent->d_name);
                 file_buf.len = 0;
-                read_entire_file(fmt("./examples/%s", ent->d_name), &file_buf);
+                read_entire_file(fmt("%s/%s", root_dir, ent->d_name), &file_buf);
                 analyze_file(file_buf, &types);
             }
         }
