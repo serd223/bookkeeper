@@ -74,7 +74,21 @@ struct __Field {
             (arr)->items = malloc((arr)->cap * sizeof *(arr)->items);               \
         }                                                                           \
     }                                                                               \
-    (arr)->items[(arr)->len++] = (item);                                            \
+    (arr)->items[(arr)->len++] = (item);
+
+#define print_string(str, ...) do {                                                 \
+    int len = sprintf(tmp_str, __VA_ARGS__);                                        \
+    if ((str)->cap <= ((unsigned long)len + (str)->len)) {                          \
+        (str)->cap += len + 8 - (len % 8);                                          \
+        if ((str)->items) {                                                         \
+            (str)->items = realloc((str)->items, (str)->cap * sizeof *(str)->items);\
+        } else {                                                                    \
+            (str)->items = malloc((str)->cap * sizeof *(str)->items);               \
+        }                                                                           \
+    }                                                                               \
+    memcpy((str)->items + (str)->len, tmp_str, len);                                \
+    (str)->len += len;                                                              \
+} while(0)
 
 void read_entire_file(const char* file_name, String* out) {
     struct stat s = {0};
@@ -255,7 +269,7 @@ void analyze_file(String content, CTypes* types) {
 
 #define fmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
 
-char tmp_str[1024];
+char tmp_str[4096];
 int main(int argc, char** argv) {
     char* root_dir;
     if (argc > 1) {
@@ -283,13 +297,13 @@ int main(int argc, char** argv) {
         }
     }
     printf("Analayzed %lu types.\n", types.len);
-    // file_buf.len = 0;
-    // FILE* book = fopen("bookkeeper.c", "w"); // TODO: check errors
+    String book_buf = {0};
+    FILE* book = fopen("bookkeeper.c", "w"); // TODO: check errors
     for (size_t i = 0; i < types.len; ++i) {
         CType* ty = types.items + i;
         if (ty->kind == CCOMPOUND) {
-            printf("\nvoid dump_%s(%s* item, char* dst) {\n", ty->name, ty->name);
-            printf("    printf(\"{\");\n");
+            print_string(&book_buf, "\nvoid dump_%s(%s* item, char* dst) {\n", ty->name, ty->name);
+            print_string(&book_buf, "    printf(\"{\");\n");
             for (size_t j = 0; j < ty->fields.len; ++j) {
                 Field* f = ty->fields.items + j;
                 switch (f->type.kind) {
@@ -298,51 +312,50 @@ int main(int argc, char** argv) {
                 } break;
                 case CPRIMITIVE: {
                     switch (f->type.type) {
-
                     case CINT: {
-                        printf("    printf(\"\\\"%s\\\":%%d\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%d\", item->%s);\n", f->name, f->name);
                     } break;
                     case CUINT: {
-                        printf("    printf(\"\\\"%s\\\":%%u\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%u\", item->%s);\n", f->name, f->name);
                     } break;
                     case CLONG: {
-                        printf("    printf(\"\\\"%s\\\":%%ld\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%ld\", item->%s);\n", f->name, f->name);
                     } break;
                     case CULONG: {
-                        printf("    printf(\"\\\"%s\\\":%%lu\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%lu\", item->%s);\n", f->name, f->name);
                     } break;
                     case CFLOAT: {
-                        printf("    printf(\"\\\"%s\\\":%%f\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%f\", item->%s);\n", f->name, f->name);
                     } break;
                     case CBOOL: {
-                        printf("    printf(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
                     } break;
                     case CSTRING: {
-                        printf("    printf(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
                     } break;
                     case CCHAR: {
-                        printf("    printf(\"\\\"%s\\\":%%c\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%c\", item->%s);\n", f->name, f->name);
                     } break;
                     default: abort();
                     }
                 } break;
                 case CEXTERNAL: {
-                    printf("    printf(\"\\\"%s\\\":\");\n", f->name);
-                    printf("    dump_%s(&item->%s, dst);\n", f->type.name, f->name);
+                    print_string(&book_buf, "    printf(\"\\\"%s\\\":\");\n", f->name);
+                    print_string(&book_buf, "    dump_%s(&item->%s, dst);\n", f->type.name, f->name);
                 } break;
                 default: abort();
                 }
-                if (j < ty->fields.len - 1) printf("    printf(\",\");\n");
+                if (j < ty->fields.len - 1) print_string(&book_buf, "    printf(\",\");\n");
             }
-            printf("    printf(\"}\");\n");
-            printf("}");
+            print_string(&book_buf, "    printf(\"}\");\n");
+            print_string(&book_buf, "}");
         } else {
             // TODO: report error
         }
     }
-    printf("\n");
-
-    // fclose(book);
+    push_da(&book_buf, '\n');
+    fwrite(book_buf.items, sizeof *book_buf.items, book_buf.len, book); // TODO: check errors
+    fclose(book);
     return 0;
 }
 
