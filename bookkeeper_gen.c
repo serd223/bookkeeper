@@ -346,7 +346,7 @@ int main(int argc, char** argv) {
         CCompound * ty = types.items + i;
         if (ty->derived_schemas & DERIVE_JSON) {
             print_string(&book_buf, "\nvoid dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
-            print_string(&book_buf, "    BK_OFFSET_t offset = 0;\n");
+            print_string(&book_buf, "    BK_OFFSET_t offset = {0};\n");
             print_string(&book_buf, "    BK_FMT(\"{\");\n");
             for (size_t j = 0; j < ty->fields.len; ++j) {
                 Field* f = ty->fields.items + j;
