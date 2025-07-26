@@ -1,5 +1,6 @@
 #include "people.h"
 #include "stdio.h"
+#define BW_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #include "../bookkeeper.c"
 
 int main() {
@@ -15,7 +16,7 @@ int main() {
         .fired = false,
         .office_floor = 42
     };
-    dump_json_Manager(&manager, "unused parameter");
+    dump_json_Manager(&manager, stdout);
     printf("\n");
     return 0;
 }

@@ -299,11 +299,15 @@ int main(int argc, char** argv) {
     printf("Analayzed %lu types.\n", types.len);
     String book_buf = {0};
     FILE* book = fopen("bookkeeper.c", "w"); // TODO: check errors
+    print_string(&book_buf, "#ifndef BW_FMT\n");
+    print_string(&book_buf, "#define BW_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)\n");
+    print_string(&book_buf, "#endif\n");
     for (size_t i = 0; i < types.len; ++i) {
         CType* ty = types.items + i;
         if (ty->kind == CCOMPOUND) {
-            print_string(&book_buf, "\nvoid dump_json_%s(%s* item, char* dst) {\n", ty->name, ty->name);
-            print_string(&book_buf, "    printf(\"{\");\n");
+            print_string(&book_buf, "\nvoid dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
+            print_string(&book_buf, "    int offset = 0;\n");
+            print_string(&book_buf, "    BW_FMT(\"{\");\n");
             for (size_t j = 0; j < ty->fields.len; ++j) {
                 Field* f = ty->fields.items + j;
                 switch (f->type.kind) {
@@ -313,42 +317,42 @@ int main(int argc, char** argv) {
                 case CPRIMITIVE: {
                     switch (f->type.type) {
                     case CINT: {
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%d\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":%%d\", item->%s);\n", f->name, f->name);
                     } break;
                     case CUINT: {
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%u\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":%%u\", item->%s);\n", f->name, f->name);
                     } break;
                     case CLONG: {
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%ld\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":%%ld\", item->%s);\n", f->name, f->name);
                     } break;
                     case CULONG: {
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%lu\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":%%lu\", item->%s);\n", f->name, f->name);
                     } break;
                     case CFLOAT: {
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%f\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":%%f\", item->%s);\n", f->name, f->name);
                     } break;
                     case CBOOL: {
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
                     } break;
                     case CSTRING: {
                         // TODO: The generated code should escape item->field before printing it
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
                     } break;
                     case CCHAR: {
-                        print_string(&book_buf, "    printf(\"\\\"%s\\\":%%c\", item->%s);\n", f->name, f->name);
+                        print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":%%c\", item->%s);\n", f->name, f->name);
                     } break;
                     default: abort();
                     }
                 } break;
                 case CEXTERNAL: {
-                    print_string(&book_buf, "    printf(\"\\\"%s\\\":\");\n", f->name);
+                    print_string(&book_buf, "    BW_FMT(\"\\\"%s\\\":\");\n", f->name);
                     print_string(&book_buf, "    dump_json_%s(&item->%s, dst);\n", f->type.name, f->name);
                 } break;
                 default: abort();
                 }
-                if (j < ty->fields.len - 1) print_string(&book_buf, "    printf(\",\");\n");
+                if (j < ty->fields.len - 1) print_string(&book_buf, "    BW_FMT(\",\");\n");
             }
-            print_string(&book_buf, "    printf(\"}\");\n");
+            print_string(&book_buf, "    BW_FMT(\"}\");\n");
             print_string(&book_buf, "}");
         } else {
             // TODO: report error
