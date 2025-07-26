@@ -15,7 +15,7 @@ int main() {
         .fired = false,
         .office_floor = 42
     };
-    dump_Manager(&manager, "unused parameter");
+    dump_json_Manager(&manager, "unused parameter");
     printf("\n");
     return 0;
 }

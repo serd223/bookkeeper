@@ -302,7 +302,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < types.len; ++i) {
         CType* ty = types.items + i;
         if (ty->kind == CCOMPOUND) {
-            print_string(&book_buf, "\nvoid dump_%s(%s* item, char* dst) {\n", ty->name, ty->name);
+            print_string(&book_buf, "\nvoid dump_json_%s(%s* item, char* dst) {\n", ty->name, ty->name);
             print_string(&book_buf, "    printf(\"{\");\n");
             for (size_t j = 0; j < ty->fields.len; ++j) {
                 Field* f = ty->fields.items + j;
@@ -331,6 +331,7 @@ int main(int argc, char** argv) {
                         print_string(&book_buf, "    printf(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
                     } break;
                     case CSTRING: {
+                        // TODO: The generated code should escape item->field before printing it
                         print_string(&book_buf, "    printf(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
                     } break;
                     case CCHAR: {
@@ -341,7 +342,7 @@ int main(int argc, char** argv) {
                 } break;
                 case CEXTERNAL: {
                     print_string(&book_buf, "    printf(\"\\\"%s\\\":\");\n", f->name);
-                    print_string(&book_buf, "    dump_%s(&item->%s, dst);\n", f->type.name, f->name);
+                    print_string(&book_buf, "    dump_json_%s(&item->%s, dst);\n", f->type.name, f->name);
                 } break;
                 default: abort();
                 }
