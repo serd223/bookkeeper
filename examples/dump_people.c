@@ -1,6 +1,6 @@
 #include "people.h"
 #include "stdio.h"
-#define BW_FMT(...) offset += fprintf(dst, __VA_ARGS__)
+#define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #include "../bookkeeper.c"
 
 int main() {
