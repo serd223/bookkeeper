@@ -18,7 +18,6 @@ typedef struct {
 } String;
 
 typedef enum {
-    CCOMPOUND = 1,
     CPRIMITIVE,
     CEXTERNAL
 } CType_Kind;
@@ -34,14 +33,11 @@ typedef enum {
     CSTRING
 } CPrimitive;
 
-typedef struct __CType CType;
-typedef struct __Field Field;
-
 typedef struct {
-    Field* items;
-    size_t len;
-    size_t cap;
-} Fields;
+    CType_Kind kind;
+    const char* name; // CEXTERNAL
+    CPrimitive type;  // CPIRIMITIVE
+} CType;
 
 typedef struct {
     CType* items;
@@ -49,17 +45,31 @@ typedef struct {
     size_t cap;
 } CTypes;
 
-struct __CType {
-    CType_Kind kind;
-    Fields fields;    // CCOMPOUND
-    const char* name; // CCOMPOUND || CEXTERNAL
-    CPrimitive type;  // CPIRIMITIVE
-};
-
-struct __Field {
+typedef struct {
     const char* name;
     CType type;
-};
+} Field;
+
+typedef struct {
+    Field* items;
+    size_t len;
+    size_t cap;
+} Fields;
+
+#define DERIVE_JSON 0b1
+#define DERIVE_ALL DERIVE_JSON
+
+typedef struct {
+    int derived_schemas;
+    Fields fields;
+    const char* name;
+} CCompound;
+
+typedef struct {
+    CCompound* items;
+    size_t len;
+    size_t cap;
+} CCompounds;
 
 #define push_da(arr, item)                                                          \
     if ((arr)->len + 1 >= (arr)->cap) {                                             \
@@ -162,7 +172,7 @@ bool get_expect_ids(stb_lexer* lex, int ids_count, ...) {
     return res;
 }
 
-void analyze_file(String content, CTypes* types) {
+void analyze_file(String content, CCompounds* out, bool derive_all) {
     static char string_store[4096];
     stb_lexer lex = {0};
     stb_c_lexer_init(&lex, content.items, content.items + content.len, string_store, sizeof string_store);
@@ -174,8 +184,8 @@ void analyze_file(String content, CTypes* types) {
         // NOTE: this tool can only understand typedef struct {} Name; style definitions
         if (get_expect_ids(&lex, 2, "typedef", "struct")) {
             if (!(get_expect_tokens(&lex, 1, '{'))) continue;
-            CType strct = {0};
-            strct.kind = CCOMPOUND;
+            CCompound strct = {0};
+            if (derive_all) strct.derived_schemas |= DERIVE_ALL;
             for (;;) {
                 Field field = {0};
                 if (peek_tokens(&lex, 5, CLEX_id, CLEX_id, '*', CLEX_id, ';') && peek_ids(&lex, 2, "const", "char")) { 
@@ -259,7 +269,14 @@ void analyze_file(String content, CTypes* types) {
             // `continue`ing here can leak unused field/type names of partially correct structs
             if (!get_expect_tokens(&lex, 2, '}', CLEX_id)) continue;
             strct.name = strdup(lex.string); // leaks (static data)
-            push_da(types, strct);
+            if (peek_tokens(&lex, 3, CLEX_id, '(', ')') && peek_ids(&lex, 1, "derive_json")) {
+                    stb_c_lexer_get_token(&lex); // derive_json
+                    stb_c_lexer_get_token(&lex); // (
+                    stb_c_lexer_get_token(&lex); // )
+                    strct.derived_schemas |= DERIVE_JSON;
+                
+            }
+            push_da(out, strct);
         } else {
             lex.parse_point = pp;
             stb_c_lexer_get_token(&lex);
@@ -271,17 +288,34 @@ void analyze_file(String content, CTypes* types) {
 
 char tmp_str[4096];
 int main(int argc, char** argv) {
+    bool derive_all = false;
     char* root_dir;
+    DIR* pwd;
+    // TODO: Make a proper flag system instead of this mess
     if (argc > 1) {
         // normally you should escape this but who cares tbh
         root_dir = argv[1];
+        pwd = opendir(root_dir);
+        if (!pwd) {
+            root_dir = "./examples";
+            pwd = opendir(root_dir);
+            if (!pwd) return 1;
+            if (strcmp(argv[1], "--derive-all") == 0) {
+                derive_all = true;
+            }
+        };
+        if (argc > 2) {
+            if (strcmp(argv[2], "--derive-all") == 0) {
+                derive_all = true;
+            }
+        }
     } else {
         root_dir = "./examples";
+        pwd = opendir(root_dir);
+        if (!pwd) return 1;
     }
-    DIR* pwd = opendir(root_dir);
-    if (!pwd) return 1;
 
-    CTypes types = {0}; // leaks (static data)
+    CCompounds types = {0}; // leaks (static data)
     String file_buf = {0}; // leaks (static data)
     for (struct dirent* ent = readdir(pwd); ent; ent = readdir(pwd)) {
         if (ent->d_type == DT_REG) {
@@ -292,28 +326,28 @@ int main(int argc, char** argv) {
                 printf("Analyzing file: %s\n", ent->d_name);
                 file_buf.len = 0;
                 read_entire_file(fmt("%s/%s", root_dir, ent->d_name), &file_buf); // TODO: check errors
-                analyze_file(file_buf, &types);
+                analyze_file(file_buf, &types, derive_all);
             }
         }
     }
     printf("Analayzed %lu types.\n", types.len);
     String book_buf = {0};
-    FILE* book = fopen("bookkeeper.c", "w"); // TODO: check errors
+    FILE* book_header = fopen("bookkeeper.h", "w");
+    fprintf(book_header, "#define derive_json(...)\n");
+    fclose(book_header);
+    FILE* book_impl = fopen("bookkeeper.c", "w"); // TODO: check errors
     print_string(&book_buf, "#ifndef BW_FMT\n");
     print_string(&book_buf, "#define BW_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)\n");
     print_string(&book_buf, "#endif\n");
     for (size_t i = 0; i < types.len; ++i) {
-        CType* ty = types.items + i;
-        if (ty->kind == CCOMPOUND) {
+        CCompound * ty = types.items + i;
+        if (ty->derived_schemas & DERIVE_JSON) {
             print_string(&book_buf, "\nvoid dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
             print_string(&book_buf, "    int offset = 0;\n");
             print_string(&book_buf, "    BW_FMT(\"{\");\n");
             for (size_t j = 0; j < ty->fields.len; ++j) {
                 Field* f = ty->fields.items + j;
                 switch (f->type.kind) {
-                case CCOMPOUND: {
-                    // should be unreachable TODO: report error
-                } break;
                 case CPRIMITIVE: {
                     switch (f->type.type) {
                     case CINT: {
@@ -354,13 +388,11 @@ int main(int argc, char** argv) {
             }
             print_string(&book_buf, "    BW_FMT(\"}\");\n");
             print_string(&book_buf, "}");
-        } else {
-            // TODO: report error
         }
     }
     push_da(&book_buf, '\n');
-    fwrite(book_buf.items, sizeof *book_buf.items, book_buf.len, book); // TODO: check errors
-    fclose(book);
+    fwrite(book_buf.items, sizeof *book_buf.items, book_buf.len, book_impl); // TODO: check errors
+    fclose(book_impl);
     return 0;
 }
 

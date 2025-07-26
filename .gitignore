@@ -1,4 +1,5 @@
 bookkeeper_gen
 bookkeeper_gen_debug
 bookkeeper.c
+bookkeeper.h
 dump_people
