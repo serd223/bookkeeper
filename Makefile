@@ -9,5 +9,7 @@ bookkeeper_gen_debug: bookkeeper_gen.c stb_c_lexer.h
 bookkeeper.c: bookkeeper_gen
 	./bookkeeper_gen ./examples
 
-dump_people: ./examples/people.h ./examples/dump_people.c bookkeeper.c
+bookkeeper.h: bookkeeper.c
+
+dump_people: ./examples/people.h ./examples/dump_people.c bookkeeper.c bookkeeper.h
 	clang ./examples/dump_people.c -o dump_people
