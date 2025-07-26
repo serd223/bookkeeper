@@ -339,11 +339,14 @@ int main(int argc, char** argv) {
     print_string(&book_buf, "#ifndef BW_FMT\n");
     print_string(&book_buf, "#define BW_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)\n");
     print_string(&book_buf, "#endif\n");
+    print_string(&book_buf, "#ifndef BW_OFFSET_t\n");
+    print_string(&book_buf, "#define BW_OFFSET_t size_t\n");
+    print_string(&book_buf, "#endif\n");
     for (size_t i = 0; i < types.len; ++i) {
         CCompound * ty = types.items + i;
         if (ty->derived_schemas & DERIVE_JSON) {
             print_string(&book_buf, "\nvoid dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
-            print_string(&book_buf, "    int offset = 0;\n");
+            print_string(&book_buf, "    BW_OFFSET_t offset = 0;\n");
             print_string(&book_buf, "    BW_FMT(\"{\");\n");
             for (size_t j = 0; j < ty->fields.len; ++j) {
                 Field* f = ty->fields.items + j;
