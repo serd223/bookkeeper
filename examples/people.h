@@ -4,7 +4,6 @@
 
 typedef struct {
     const char* name;
-    double weight;
     int age;
     bool married;
 } Person;

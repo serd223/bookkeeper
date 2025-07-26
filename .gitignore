@@ -1,2 +1,4 @@
 analyzer
 analyzer_debug
+bookkeeper.c
+dump_people
