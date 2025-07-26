@@ -20,15 +20,16 @@ void dump_$schema$_$type$($type$* item, void* dst) {
     /* generated impl */
 }
 ```
-Dump functions use a macro named `BW_FMT` defined inside `bookkeeper.c` to output into the provided `dst` buffer. The `void* dst` that is accepted through the `dump` family of functions are directly passed to `BW_FMT` so the underlying type of `dst` depends on your `BW_FMT` implementation. The default implementation uses `sprintf` and expects `dst` to be `char*` but it can be redefined inside your code before including `bookkeeper.c`. (See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
+Dump functions use a macro named `BW_FMT` defined inside `bookkeeper.c` to output into the provided `dst` buffer. The `void* dst` that is accepted through the `dump` family of functions is directly passed to `BW_FMT` so the underlying type of `dst` depends on your `BW_FMT` implementation. The default implementation uses `sprintf` and expects `dst` to be `char*` but it can be redefined inside your code before including `bookkeeper.c`.
+(See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
 
 # Build Instructions
-You can build `bookkeeper_gen` by cloning this repository and running:
+You can build `bookkeeper_gen` by cloning this repository and running: (requires [clang](https://releases.llvm.org/download.html))
 ```console
     $ make
 ```
 
-If you want to build the `dump_people` example, run:
+If you want to build the `dump_people` example, run: (requires [clang](https://releases.llvm.org/download.html))
 ```console
     $ make dump_people
 ```
