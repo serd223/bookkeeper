@@ -1,4 +1,4 @@
-analyzer
-analyzer_debug
+bookkeeper_gen
+bookkeeper_gen_debug
 bookkeeper.c
 dump_people
