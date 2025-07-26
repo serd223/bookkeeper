@@ -25,6 +25,10 @@ typedef enum {
 
 typedef enum {
     CINT = 1,
+    CUINT,
+    CLONG,
+    CULONG,
+    CCHAR,
     CFLOAT,
     CBOOL,
     CSTRING
@@ -52,7 +56,7 @@ struct __CType {
     CPrimitive type;  // CPIRIMITIVE
 };
 
-struct __Field{
+struct __Field {
     const char* name;
     CType type;
 };
@@ -180,10 +184,40 @@ void analyze_file(String content, CTypes* types) {
                     field.type.kind = CPRIMITIVE;
                     field.type.type = CSTRING;
                     push_da(&strct.fields, field);
+                } else if (peek_tokens(&lex, 4, CLEX_id, CLEX_id, CLEX_id, ';')) {
+                    bool is_known_primitive = true;
+                    if (peek_ids(&lex, 2, "unsigned", "int")) {
+                        field.type.type = CUINT;
+                    } else if (peek_ids(&lex, 2, "unsigned", "long")) {
+                        field.type.type = CULONG;
+                    } else {
+                        is_known_primitive = false;
+                    }
+                    if (is_known_primitive) {
+                        field.type.kind = CPRIMITIVE;
+                        stb_c_lexer_get_token(&lex); // type name 1
+                        stb_c_lexer_get_token(&lex); // type name 2
+                        stb_c_lexer_get_token(&lex); // name
+                        field.name = strdup(lex.string); // leaks
+                        stb_c_lexer_get_token(&lex); // ;
+                        push_da(&strct.fields, field);
+                    } else {
+                        // TODO: Report unknown field error
+                        break;
+                    }
+                    
                 } else if (peek_tokens(&lex, 3, CLEX_id, CLEX_id, ';')) {
                     bool is_known_primitive = true;
-                    if (peek_ids(&lex, 1, "int") || peek_ids(&lex, 1, "size_t")) {
+                    if (peek_ids(&lex, 1, "int")) {
                         field.type.type = CINT;
+                    } else if (peek_ids(&lex, 1, "long")) {
+                        field.type.type = CLONG;
+                    } else if (peek_ids(&lex, 1, "size_t")) {
+                        field.type.type = CULONG;
+                    } else if (peek_ids(&lex, 1, "double") || peek_ids(&lex, 1, "float")) {
+                        field.type.type = CFLOAT;
+                    } else if (peek_ids(&lex, 1, "char")) {
+                        field.type.type = CCHAR;
                     } else if (peek_ids(&lex, 1, "double") || peek_ids(&lex, 1, "float")) {
                         field.type.type = CFLOAT;
                     } else if (peek_ids(&lex, 1, "bool")) {
@@ -203,9 +237,8 @@ void analyze_file(String content, CTypes* types) {
                     field.name = strdup(lex.string); // leaks
                     stb_c_lexer_get_token(&lex); // ;
                     push_da(&strct.fields, field);
-
-                    
                 } else {
+                    // TODO: Report unknown field error
                     break;
                 }
             }
@@ -244,12 +277,72 @@ int main(int argc, char** argv) {
             ) {
                 printf("Analyzing file: %s\n", ent->d_name);
                 file_buf.len = 0;
-                read_entire_file(fmt("%s/%s", root_dir, ent->d_name), &file_buf);
+                read_entire_file(fmt("%s/%s", root_dir, ent->d_name), &file_buf); // TODO: check errors
                 analyze_file(file_buf, &types);
             }
         }
     }
     printf("Analayzed %lu types.\n", types.len);
+    // file_buf.len = 0;
+    // FILE* book = fopen("bookkeeper.c", "w"); // TODO: check errors
+    for (size_t i = 0; i < types.len; ++i) {
+        CType* ty = types.items + i;
+        if (ty->kind == CCOMPOUND) {
+            printf("\nvoid dump_%s(%s* item, char* dst) {\n", ty->name, ty->name);
+            printf("    printf(\"{\");\n");
+            for (size_t j = 0; j < ty->fields.len; ++j) {
+                Field* f = ty->fields.items + j;
+                switch (f->type.kind) {
+                case CCOMPOUND: {
+                    // should be unreachable TODO: report error
+                } break;
+                case CPRIMITIVE: {
+                    switch (f->type.type) {
+
+                    case CINT: {
+                        printf("    printf(\"\\\"%s\\\":%%d\", item->%s);\n", f->name, f->name);
+                    } break;
+                    case CUINT: {
+                        printf("    printf(\"\\\"%s\\\":%%u\", item->%s);\n", f->name, f->name);
+                    } break;
+                    case CLONG: {
+                        printf("    printf(\"\\\"%s\\\":%%ld\", item->%s);\n", f->name, f->name);
+                    } break;
+                    case CULONG: {
+                        printf("    printf(\"\\\"%s\\\":%%lu\", item->%s);\n", f->name, f->name);
+                    } break;
+                    case CFLOAT: {
+                        printf("    printf(\"\\\"%s\\\":%%f\", item->%s);\n", f->name, f->name);
+                    } break;
+                    case CBOOL: {
+                        printf("    printf(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
+                    } break;
+                    case CSTRING: {
+                        printf("    printf(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
+                    } break;
+                    case CCHAR: {
+                        printf("    printf(\"\\\"%s\\\":%%c\", item->%s);\n", f->name, f->name);
+                    } break;
+                    default: abort();
+                    }
+                } break;
+                case CEXTERNAL: {
+                    printf("    printf(\"\\\"%s\\\":\");\n", f->name);
+                    printf("    dump_%s(&item->%s, dst);\n", f->type.name, f->name);
+                } break;
+                default: abort();
+                }
+                if (j < ty->fields.len - 1) printf("    printf(\",\");\n");
+            }
+            printf("    printf(\"}\");\n");
+            printf("}");
+        } else {
+            // TODO: report error
+        }
+    }
+    printf("\n");
+
+    // fclose(book);
     return 0;
 }
 
