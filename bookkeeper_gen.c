@@ -353,10 +353,10 @@ int main(int argc, char** argv) {
     FILE* book_impl = fopen("bookkeeper.c", "w"); // TODO: check errors
     print_string(&book_buf, "#ifndef BK_FMT\n");
     print_string(&book_buf, "#define BK_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)\n");
-    print_string(&book_buf, "#endif\n");
+    print_string(&book_buf, "#endif // BK_FMT\n");
     print_string(&book_buf, "#ifndef BK_OFFSET_t\n");
     print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
-    print_string(&book_buf, "#endif\n");
+    print_string(&book_buf, "#endif // BK_OFFSET_t\n");
     for (size_t i = 0; i < types.len; ++i) {
         gen_dump_impl(&book_buf, types.items + i);
         gen_parse_impl(&book_buf, types.items + i);
@@ -469,7 +469,7 @@ void gen_dump_impl(String* book_buf, CCompound* ty) {
         print_string(book_buf, "    __indent_dump_debug_%s(item, dst, 0);\n", ty->name);
         print_string(book_buf, "}\n");
     }
-    print_string(book_buf, "#endif\n");
+    print_string(book_buf, "#endif // DISABLE_DUMP\n");
 }
 
 void gen_parse_impl(String* book_buf, CCompound* ty) {
@@ -547,5 +547,5 @@ void gen_parse_impl(String* book_buf, CCompound* ty) {
         print_string(book_buf, "    return res;\n");
         print_string(book_buf, "}\n");
     }    
-    print_string(book_buf, "#endif\n");
+    print_string(book_buf, "#endif // DISABLE_PARSE\n");
 }
