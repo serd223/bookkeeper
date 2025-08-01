@@ -1,5 +1,19 @@
 #include "people.h"
 #include <stdio.h>
+
+// You don't have to put all your definitions in a seperate header file, you can still use
+// `bookkeeper` inside of your regular C files. You just need to put the `bookkeeper.c` include
+// after your struct definitions. (since those function declarations and implementations need the type)
+typedef struct {
+    Manager inner;
+    unsigned long salary;
+} ManagerWithSalary derive_all();
+
+
+// This is how the `offset` variable could be used if necessary
+// #define BK_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)
+
+// This is the default BK_FMT implementation with `fprintf`
 #define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #define DISABLE_PARSE
 #include "../gen/bookkeeper.c"
@@ -17,9 +31,13 @@ int main() {
         .fired = false,
         .office_floor = 42
     };
+    ManagerWithSalary manager_with_salary = {
+        .inner = manager,
+        .salary = 123456789
+    };
     printf("[INFO] JSON Output:\n");
-    dump_json_Manager(&manager, stdout);
+    dump_json_ManagerWithSalary(&manager_with_salary, stdout);
     printf("\n\n[INFO] Debug Output:\n");
-    dump_debug_Manager(&manager, stdout);
+    dump_debug_ManagerWithSalary(&manager_with_salary, stdout);
     return 0;
 }
