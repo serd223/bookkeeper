@@ -352,7 +352,7 @@ int main(int argc, char** argv) {
     fclose(book_header);
     FILE* book_impl = fopen("bookkeeper.c", "w"); // TODO: check errors
     print_string(&book_buf, "#ifndef BK_FMT\n");
-    print_string(&book_buf, "#define BK_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)\n");
+    print_string(&book_buf, "#define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)\n");
     print_string(&book_buf, "#endif // BK_FMT\n");
     print_string(&book_buf, "#ifndef BK_OFFSET_t\n");
     print_string(&book_buf, "#define BK_OFFSET_t size_t\n");

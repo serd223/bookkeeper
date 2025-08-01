@@ -25,7 +25,7 @@ int parse_$schema$_$type$(char* src, unsigned long len, $type$* dst) {
     /* generated impl */
 }
 ```
-Dump functions use a macro named `BK_FMT` defined inside `bookkeeper.c` to output into the provided `dst` buffer. The `void* dst` that is accepted through the `dump` family of functions is directly passed to `BK_FMT` so the underlying type of `dst` depends on your `BK_FMT` implementation. The default implementation uses `sprintf` and expects `dst` to be `char*` but it can be redefined inside your code before including `bookkeeper.c`.
+Dump functions use a macro named `BK_FMT` defined inside `bookkeeper.c` to output into the provided `dst` buffer. The `void* dst` that is accepted through the `dump` family of functions is directly passed to `BK_FMT` so the underlying type of `dst` depends on your `BK_FMT` implementation. The default implementation uses `fprintf` and expects `dst` to be `FILE*` but it can be redefined inside your code before including `bookkeeper.c`.
 (See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
 
 # Dependencies

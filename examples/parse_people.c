@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include "people.h"
-#define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #include "../thirdparty/cJSON.h"
 #include "../gen/bookkeeper.c"
 
