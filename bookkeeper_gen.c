@@ -297,6 +297,8 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
 
 #define fmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
 
+void gen_dump_decl(String* book_buf, CCompound* ty);
+void gen_parse_decl(String* book_buf, CCompound* ty);
 void gen_dump_impl(String* book_buf, CCompound* ty);
 void gen_parse_impl(String* book_buf, CCompound* ty);
 char tmp_str[4096];
@@ -358,6 +360,10 @@ int main(int argc, char** argv) {
     print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
     print_string(&book_buf, "#endif // BK_OFFSET_t\n");
     for (size_t i = 0; i < types.len; ++i) {
+        gen_dump_decl(&book_buf, types.items + i);
+        gen_parse_decl(&book_buf, types.items + i);
+    }
+    for (size_t i = 0; i < types.len; ++i) {
         gen_dump_impl(&book_buf, types.items + i);
         gen_parse_impl(&book_buf, types.items + i);
     }
@@ -367,7 +373,28 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+void gen_dump_decl(String* book_buf, CCompound* ty) {
+    if (ty->derived_schemas == 0) return;
+    print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");
+    if (ty->derived_schemas & DERIVE_JSON) {
+        print_string(book_buf, "void dump_json_%s(%s* item, void* dst);\n", ty->name, ty->name);
+    }
+    if (ty->derived_schemas & DERIVE_DEBUG) {
+        print_string(book_buf, "void __indent_dump_debug_%s(%s* item, void* dst, int indent);\n", ty->name, ty->name);
+        print_string(book_buf, "void dump_debug_%s(%s* item, void* dst);\n", ty->name, ty->name);
+    }
+    print_string(book_buf, "#endif // DISABLE_DUMP\n");
+}
+void gen_parse_decl(String* book_buf, CCompound* ty) {
+    if (ty->derived_schemas == 0) return;
+    print_string(book_buf, "\n#ifndef DISABLE_PARSE\n");
+    if (ty->derived_schemas & DERIVE_JSON) {
+        print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst);\n", ty->name, ty->name);
+    }
+    print_string(book_buf, "#endif // DISABLE_PARSE\n");
+}
 void gen_dump_impl(String* book_buf, CCompound* ty) {
+    if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");
     if (ty->derived_schemas & DERIVE_JSON) {
         print_string(book_buf, "void dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
@@ -473,6 +500,7 @@ void gen_dump_impl(String* book_buf, CCompound* ty) {
 }
 
 void gen_parse_impl(String* book_buf, CCompound* ty) {
+    if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifndef DISABLE_PARSE\n");
     if (ty->derived_schemas * DERIVE_JSON) {
         print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst) {\n", ty->name, ty->name);
