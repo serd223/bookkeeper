@@ -1,15 +1,37 @@
-default: bookkeeper_gen bookkeeper_gen_debug
+CFLAGS = -I./thirdparty/
 
-bookkeeper_gen: bookkeeper_gen.c stb_c_lexer.h
-	clang bookkeeper_gen.c -o bookkeeper_gen
+comma := ,
+empty :=
+space := $(empty) $(empty)
+FLAGS_LIST = $(subst $(space),$(comma),$(CFLAGS))
+a := $(file > .clangd, CompileFlags:)
+b := $(file >> .clangd, 	Add: [$(FLAGS_LIST)])
 
-bookkeeper_gen_debug: bookkeeper_gen.c stb_c_lexer.h
-	clang bookkeeper_gen.c -g -DDEBUG -o bookkeeper_gen_debug
+default: build/bookkeeper_gen build/bookkeeper_gen_debug
 
-bookkeeper.c: bookkeeper_gen
-	./bookkeeper_gen ./examples
+bk_gen: ./build/bookkeper_gen
 
-bookkeeper.h: bookkeeper.c
+dump: ./build/dump_people
 
-dump_people: ./examples/people.h ./examples/dump_people.c bookkeeper.c bookkeeper.h
-	clang ./examples/dump_people.c -o dump_people
+build:
+	mkdir -p ./build
+
+gen:
+	mkdir -p ./gen
+
+build/bookkeeper_gen: bookkeeper_gen.c ./thirdparty/stb_c_lexer.h build
+	clang $(CFLAGS) bookkeeper_gen.c -o ./build/bookkeeper_gen
+
+build/bookkeeper_gen_debug: bookkeeper_gen.c ./thirdparty/stb_c_lexer.h build
+	clang $(CFLAGS) bookkeeper_gen.c -g -DDEBUG -o ./build/bookkeeper_gen_debug
+
+gen/bookkeeper.c: ./build/bookkeeper_gen gen
+	./build/bookkeeper_gen ./examples && mv ./bookkeeper.c ./gen/ && mv ./bookkeeper.h ./gen/
+
+gen/bookkeeper.h: ./gen/bookkeeper.c gen
+
+build/dump_people: ./examples/people.h ./examples/dump_people.c ./gen/bookkeeper.c ./gen/bookkeeper.h build
+	clang $(CFLAGS) ./examples/dump_people.c -o ./build/dump_people
+
+clean: build gen
+	rm -r ./build/ && mkdir -p build && rm -r ./gen && mkdir -p gen

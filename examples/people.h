@@ -1,7 +1,7 @@
 #ifndef __PEOPLE_H__
 #define __PEOPLE_H__
 #include <stdbool.h>
-#include "../bookkeeper.h"
+#include "../gen/bookkeeper.h"
 
 typedef struct {
     const char* name;

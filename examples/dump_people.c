@@ -1,7 +1,7 @@
 #include "people.h"
 #include "stdio.h"
 #define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
-#include "../bookkeeper.c"
+#include "../gen/bookkeeper.c"
 
 int main() {
     Person manager_personal = {
