@@ -27,7 +27,7 @@ int main() {
     if (!parse_json_Manager(input, input_len, &manager)) return 1;
 
     printf("[INFO] Data parsed from '"JSON_FILE"':\n");
-    dump_json_Manager(&manager, stdout);
+    dump_debug_Manager(&manager, stdout);
 
     printf("\n");
     return 0;

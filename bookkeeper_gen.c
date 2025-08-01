@@ -57,7 +57,8 @@ typedef struct {
 } Fields;
 
 #define DERIVE_JSON 0b1
-#define DERIVE_ALL DERIVE_JSON
+#define DERIVE_DEBUG 0b10
+#define DERIVE_ALL DERIVE_JSON | DERIVE_DEBUG
 
 typedef struct {
     int derived_schemas;
@@ -273,9 +274,11 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
             while (peek_tokens(&lex, 3, CLEX_id, '(', ')')) {
                 if (peek_ids(&lex, 1, "derive_json")) {
                     strct.derived_schemas |= DERIVE_JSON;
+                } else if (peek_ids(&lex, 1, "derive_debug")) {
+                    strct.derived_schemas |= DERIVE_DEBUG;
                 } else if (peek_ids(&lex, 1, "derive_all")) {
                     strct.derived_schemas |= DERIVE_ALL;
-                } else {
+                }else {
                     // Shortcircuits out of the loop so it doesn't 'get' any tokens
                     break;
                 }
@@ -344,6 +347,7 @@ int main(int argc, char** argv) {
     String book_buf = {0};
     FILE* book_header = fopen("bookkeeper.h", "w");
     fprintf(book_header, "#define derive_json(...)\n");
+    fprintf(book_header, "#define derive_debug(...)\n");
     fprintf(book_header, "#define derive_all(...)\n");
     fclose(book_header);
     FILE* book_impl = fopen("bookkeeper.c", "w"); // TODO: check errors
@@ -411,6 +415,58 @@ void gen_dump_impl(String* book_buf, CCompound* ty) {
             if (j < ty->fields.len - 1) print_string(book_buf, "    BK_FMT(\",\");\n");
         }
         print_string(book_buf, "    BK_FMT(\"}\");\n");
+        print_string(book_buf, "}\n");
+    }
+    if (ty->derived_schemas & DERIVE_DEBUG) {
+        print_string(book_buf, "void __indent_dump_debug_%s(%s* item, void* dst, int indent) {\n", ty->name, ty->name);
+        print_string(book_buf, "    BK_OFFSET_t offset = {0};\n");
+        print_string(book_buf, "    BK_FMT(\"%%*s%s {\\n\", indent, \"\");\n", ty->name);
+        for (size_t j = 0; j < ty->fields.len; ++j) {
+            Field* f = ty->fields.items + j;
+            switch (f->type.kind) {
+            case CPRIMITIVE: {
+                switch (f->type.type) {
+                case CINT: {
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%d\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                } break;
+                case CUINT: {
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%u\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                } break;
+                case CLONG: {
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%ld\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                } break;
+                case CULONG: {
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%lu\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                } break;
+                case CFLOAT: {
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%f\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                } break;
+                case CBOOL: {
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%s\\n\", indent + 4, \"\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
+                } break;
+                case CSTRING: {
+                    // TODO: The generated code should escape item->field before printing it
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%s\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                } break;
+                case CCHAR: {
+                    print_string(book_buf, "    BK_FMT(\"%%*s%s: %%c\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                } break;
+                default: abort();
+                }
+            } break;
+            case CEXTERNAL: {
+                print_string(book_buf, "    BK_FMT(\"%%*s%s: {\\n\", indent + 4, \"\");\n", f->name);
+                print_string(book_buf, "    __indent_dump_debug_%s(&item->%s, dst, indent + 8);\n", f->type.name, f->name);
+                print_string(book_buf, "    BK_FMT(\"%%*s}\\n\", indent + 4, \"\");\n");
+            } break;
+            default: abort();
+            }
+        }
+        print_string(book_buf, "    BK_FMT(\"%%*s}\\n\", indent, \"\");\n");
+        print_string(book_buf, "}\n");
+
+        print_string(book_buf, "void dump_debug_%s(%s* item, void* dst) {\n", ty->name, ty->name);
+        print_string(book_buf, "    __indent_dump_debug_%s(item, dst, 0);\n", ty->name);
         print_string(book_buf, "}\n");
     }
     print_string(book_buf, "#endif\n");

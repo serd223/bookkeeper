@@ -17,7 +17,9 @@ int main() {
         .fired = false,
         .office_floor = 42
     };
+    printf("[INFO] JSON Output:\n");
     dump_json_Manager(&manager, stdout);
-    printf("\n");
+    printf("\n\n[INFO] Debug Output:\n");
+    dump_debug_Manager(&manager, stdout);
     return 0;
 }
