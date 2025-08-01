@@ -1,5 +1,5 @@
 #include "people.h"
-#include "stdio.h"
+#include <stdio.h>
 #define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #define DISABLE_PARSE
 #include "../gen/bookkeeper.c"
