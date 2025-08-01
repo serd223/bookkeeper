@@ -286,6 +286,8 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
 
 #define fmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
 
+void gen_dump_impl(String* book_buf, CCompound* ty);
+void gen_parse_impl(String* book_buf, CCompound* ty);
 char tmp_str[4096];
 int main(int argc, char** argv) {
     bool derive_all = false;
@@ -343,55 +345,8 @@ int main(int argc, char** argv) {
     print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
     print_string(&book_buf, "#endif\n");
     for (size_t i = 0; i < types.len; ++i) {
-        CCompound * ty = types.items + i;
-        if (ty->derived_schemas & DERIVE_JSON) {
-            print_string(&book_buf, "\nvoid dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
-            print_string(&book_buf, "    BK_OFFSET_t offset = {0};\n");
-            print_string(&book_buf, "    BK_FMT(\"{\");\n");
-            for (size_t j = 0; j < ty->fields.len; ++j) {
-                Field* f = ty->fields.items + j;
-                switch (f->type.kind) {
-                case CPRIMITIVE: {
-                    switch (f->type.type) {
-                    case CINT: {
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":%%d\", item->%s);\n", f->name, f->name);
-                    } break;
-                    case CUINT: {
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":%%u\", item->%s);\n", f->name, f->name);
-                    } break;
-                    case CLONG: {
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":%%ld\", item->%s);\n", f->name, f->name);
-                    } break;
-                    case CULONG: {
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":%%lu\", item->%s);\n", f->name, f->name);
-                    } break;
-                    case CFLOAT: {
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":%%f\", item->%s);\n", f->name, f->name);
-                    } break;
-                    case CBOOL: {
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
-                    } break;
-                    case CSTRING: {
-                        // TODO: The generated code should escape item->field before printing it
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
-                    } break;
-                    case CCHAR: {
-                        print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":%%c\", item->%s);\n", f->name, f->name);
-                    } break;
-                    default: abort();
-                    }
-                } break;
-                case CEXTERNAL: {
-                    print_string(&book_buf, "    BK_FMT(\"\\\"%s\\\":\");\n", f->name);
-                    print_string(&book_buf, "    dump_json_%s(&item->%s, dst);\n", f->type.name, f->name);
-                } break;
-                default: abort();
-                }
-                if (j < ty->fields.len - 1) print_string(&book_buf, "    BK_FMT(\",\");\n");
-            }
-            print_string(&book_buf, "    BK_FMT(\"}\");\n");
-            print_string(&book_buf, "}");
-        }
+        gen_dump_impl(&book_buf, types.items + i);
+        gen_parse_impl(&book_buf, types.items + i);
     }
     push_da(&book_buf, '\n');
     fwrite(book_buf.items, sizeof *book_buf.items, book_buf.len, book_impl); // TODO: check errors
@@ -399,4 +354,133 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+void gen_dump_impl(String* book_buf, CCompound* ty) {
+    print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");
+    if (ty->derived_schemas & DERIVE_JSON) {
+        print_string(book_buf, "void dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
+        print_string(book_buf, "    BK_OFFSET_t offset = {0};\n");
+        print_string(book_buf, "    BK_FMT(\"{\");\n");
+        for (size_t j = 0; j < ty->fields.len; ++j) {
+            Field* f = ty->fields.items + j;
+            switch (f->type.kind) {
+            case CPRIMITIVE: {
+                switch (f->type.type) {
+                case CINT: {
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":%%d\", item->%s);\n", f->name, f->name);
+                } break;
+                case CUINT: {
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":%%u\", item->%s);\n", f->name, f->name);
+                } break;
+                case CLONG: {
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":%%ld\", item->%s);\n", f->name, f->name);
+                } break;
+                case CULONG: {
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":%%lu\", item->%s);\n", f->name, f->name);
+                } break;
+                case CFLOAT: {
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":%%f\", item->%s);\n", f->name, f->name);
+                } break;
+                case CBOOL: {
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
+                } break;
+                case CSTRING: {
+                    // TODO: The generated code should escape item->field before printing it
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", f->name, f->name);
+                } break;
+                case CCHAR: {
+                    print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":%%c\", item->%s);\n", f->name, f->name);
+                } break;
+                default: abort();
+                }
+            } break;
+            case CEXTERNAL: {
+                print_string(book_buf, "    BK_FMT(\"\\\"%s\\\":\");\n", f->name);
+                print_string(book_buf, "    dump_json_%s(&item->%s, dst);\n", f->type.name, f->name);
+            } break;
+            default: abort();
+            }
+            if (j < ty->fields.len - 1) print_string(book_buf, "    BK_FMT(\",\");\n");
+        }
+        print_string(book_buf, "    BK_FMT(\"}\");\n");
+        print_string(book_buf, "}\n");
+    }
+    print_string(book_buf, "#endif\n");
+}
 
+void gen_parse_impl(String* book_buf, CCompound* ty) {
+    print_string(book_buf, "\n#ifndef DISABLE_PARSE\n");
+    if (ty->derived_schemas * DERIVE_JSON) {
+        print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst) {\n", ty->name, ty->name);
+        for (size_t i = 0; i < ty->fields.len; ++i) {
+            Field* f = ty->fields.items + i;
+            print_string(book_buf, "    cJSON* %s_%s = cJSON_GetObjectItemCaseSensitive(src, \"%s\");\n", ty->name, f->name, f->name);
+            // TODO: these early returns might leak memory, use something like `goto end`
+            print_string(book_buf, "    if (!%s_%s) return 0;\n", ty->name, f->name);
+            if (f->type.kind == CEXTERNAL) {
+                // TODO: these early returns might leak memory, use something like `goto end`
+                print_string(book_buf, "    if (!parse_cjson_%s(%s_%s, &dst->%s)) return 0;\n", f->type.name, ty->name, f->name, f->name);
+            } else if (f->type.kind == CPRIMITIVE) {
+                switch (f->type.type) {
+                case CINT: case CUINT: {
+                    print_string(book_buf, "    if (cJSON_IsNumber(%s_%s)) {\n", ty->name, f->name);
+                    print_string(book_buf, "        dst->%s = %s_%s->valueint;\n", f->name, ty->name, f->name);
+                    print_string(book_buf, "    } else {\n");
+                    // TODO: these early returns might leak memory, use something like `goto end`
+                    print_string(book_buf, "        return 0;\n");
+                    print_string(book_buf, "    }\n");
+                } break;
+                case CLONG: case CULONG: case CFLOAT: {
+                    print_string(book_buf, "    if (cJSON_IsNumber(%s_%s)) {\n", ty->name, f->name);
+                    print_string(book_buf, "        dst->%s = %s_%s->valuedouble;\n", f->name, ty->name, f->name);
+                    print_string(book_buf, "    } else {\n");
+                    // TODO: these early returns might leak memory, use something like `goto end`
+                    print_string(book_buf, "        return 0;\n");
+                    print_string(book_buf, "    }\n");
+                } break;
+                case CCHAR: {
+                    print_string(book_buf, "    if (cJSON_IsString(%s_%s)) {\n", ty->name, f->name);
+                    // TODO: these early returns might leak memory, use something like `goto end`
+                    print_string(book_buf, "        if (!%s_%s->valuestring) { return 0; };\n", ty->name, f->name);
+                    print_string(book_buf, "        dst->%s = *%s_%s->valuestring;\n", f->name, ty->name, f->name);
+                    print_string(book_buf, "    } else {\n");
+                    // TODO: these early returns might leak memory, use something like `goto end`
+                    print_string(book_buf, "        return 0;\n");
+                    print_string(book_buf, "    }\n");
+                        
+                } break;
+                case CBOOL: {
+                    print_string(book_buf, "    if (cJSON_IsBool(%s_%s)) {\n", ty->name, f->name);
+                    print_string(book_buf, "        dst->%s = %s_%s->valueint;\n", f->name, ty->name, f->name);
+                    print_string(book_buf, "    } else {\n");
+                    // TODO: these early returns might leak memory, use something like `goto end`
+                    print_string(book_buf, "        return 0;\n");
+                    print_string(book_buf, "    }\n");
+                        
+                } break;
+                case CSTRING: {
+                    print_string(book_buf, "    if (cJSON_IsString(%s_%s)) {\n", ty->name, f->name);
+                    // TODO: these early returns might leak memory, use something like `goto end`
+                    print_string(book_buf, "        if (!%s_%s->valuestring) { return 0; };\n", ty->name, f->name);
+                    print_string(book_buf, "        dst->%s = strdup(%s_%s->valuestring);\n", f->name, ty->name, f->name);
+                    print_string(book_buf, "    } else {\n");
+                    // TODO: these early returns might leak memory, use something like `goto end`
+                    print_string(book_buf, "        return 0;\n");
+                    print_string(book_buf, "    }\n");
+                } break;
+                }
+            } else {
+                abort();
+            }
+        }
+        print_string(book_buf, "    return 1;\n");
+        print_string(book_buf, "}\n");
+        print_string(book_buf, "int parse_json_%s(char* src, unsigned long len, %s* dst) {\n", ty->name, ty->name);
+        print_string(book_buf, "    cJSON* json = cJSON_ParseWithLength(src, len);\n");
+        print_string(book_buf, "    if (!json) return 0;\n");
+        print_string(book_buf, "    int res = parse_cjson_%s(json, dst);\n", ty->name);
+        print_string(book_buf, "    cJSON_Delete(json);\n");
+        print_string(book_buf, "    return res;\n");
+        print_string(book_buf, "}\n");
+    }    
+    print_string(book_buf, "#endif\n");
+}
