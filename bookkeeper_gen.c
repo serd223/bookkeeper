@@ -310,7 +310,7 @@ int main(int argc, char** argv) {
         root_dir = argv[1];
         pwd = opendir(root_dir);
         if (!pwd) {
-            root_dir = "./examples";
+            root_dir = ".";
             pwd = opendir(root_dir);
             if (!pwd) return 1;
             if (strcmp(argv[1], "--derive-all") == 0) {
@@ -323,7 +323,7 @@ int main(int argc, char** argv) {
             }
         }
     } else {
-        root_dir = "./examples";
+        root_dir = ".";
         pwd = opendir(root_dir);
         if (!pwd) return 1;
     }
