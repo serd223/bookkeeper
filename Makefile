@@ -7,7 +7,7 @@ FLAGS_LIST = $(subst $(space),$(comma),$(CFLAGS))
 a := $(file > .clangd, CompileFlags:)
 b := $(file >> .clangd, 	Add: [$(FLAGS_LIST)])
 
-.PHONY: default clean dump bk_gen
+.PHONY: default clean dump gen parse
 
 default: build/bookkeeper_gen build/bookkeeper_gen_debug
 
