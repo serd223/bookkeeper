@@ -270,11 +270,18 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
             // `continue`ing here can leak unused field/type names of partially correct structs
             if (!get_expect_tokens(&lex, 2, '}', CLEX_id)) continue;
             strct.name = strdup(lex.string); // leaks (static data)
-            if (peek_tokens(&lex, 3, CLEX_id, '(', ')') && peek_ids(&lex, 1, "derive_json")) {
-                    stb_c_lexer_get_token(&lex); // derive_json
-                    stb_c_lexer_get_token(&lex); // (
-                    stb_c_lexer_get_token(&lex); // )
+            while (peek_tokens(&lex, 3, CLEX_id, '(', ')')) {
+                if (peek_ids(&lex, 1, "derive_json")) {
                     strct.derived_schemas |= DERIVE_JSON;
+                } else if (peek_ids(&lex, 1, "derive_all")) {
+                    strct.derived_schemas |= DERIVE_ALL;
+                } else {
+                    // Shortcircuits out of the loop so it doesn't 'get' any tokens
+                    break;
+                }
+                stb_c_lexer_get_token(&lex); // derive_schema
+                stb_c_lexer_get_token(&lex); // (
+                stb_c_lexer_get_token(&lex); // )
                 
             }
             push_da(out, strct);
@@ -337,6 +344,7 @@ int main(int argc, char** argv) {
     String book_buf = {0};
     FILE* book_header = fopen("bookkeeper.h", "w");
     fprintf(book_header, "#define derive_json(...)\n");
+    fprintf(book_header, "#define derive_all(...)\n");
     fclose(book_header);
     FILE* book_impl = fopen("bookkeeper.c", "w"); // TODO: check errors
     print_string(&book_buf, "#ifndef BK_FMT\n");

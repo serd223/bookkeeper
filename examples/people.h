@@ -7,7 +7,7 @@ typedef struct {
     const char* name;
     int age;
     bool married;
-} Person derive_json();
+} Person derive_all() derive_json();
 
 typedef struct {
     Person personal_info;
