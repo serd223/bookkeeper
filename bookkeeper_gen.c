@@ -114,6 +114,7 @@ void read_entire_file(const char* file_name, String* out) {
     }
     FILE* f = fopen(file_name, "rb");
     out->len += fread(out->items + out->len, sizeof(char), f_len, f) / sizeof(char);
+    fclose(f);
 }
 
 
