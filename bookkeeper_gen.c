@@ -1,3 +1,31 @@
+/*
+Copyright (c) 2025 Serdar Çoruhlu <serdar.coruhlu@hotmail.com>
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+*/
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <dirent.h>
@@ -13,7 +41,9 @@
 #endif
 
 static char tmp_str[4096];
-#define fmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
+#define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
+#define fmt(...) strdup(tfmt(__VA_ARGS__))
+
 #define bk_log_loc(level, source, line, ...) do {\
     switch (level) {\
     case LOG_INFO: {\
@@ -170,7 +200,7 @@ int main(int argc, char** argv) {
     print_string(&book_buf, "#define derive_debug(...)\n");
     print_string(&book_buf, "#define derive_all(...)\n");
     print_string(&book_buf, "#endif // __DERIVES_H__\n");
-    write_entire_file(fmt("%s/derives.h", out_path), &book_buf);
+    write_entire_file(tfmt("%s/derives.h", out_path), &book_buf);
 
     CCompounds types = {0}; // leaks (static data)
     String file_buf = {0}; // leaks (static data)
@@ -185,7 +215,7 @@ int main(int argc, char** argv) {
             ) {
                 bk_log(LOG_INFO, "Analyzing file: %s\n", ent->d_name);
                 file_buf.len = 0;
-                if (!read_entire_file(fmt("%s/%s", input_path, ent->d_name), &file_buf)) continue;
+                if (!read_entire_file(tfmt("%s/%s", input_path, ent->d_name), &file_buf)) continue;
 
                 types.len = 0;
                 analyze_file(file_buf, &types, derive_all);
@@ -212,7 +242,7 @@ int main(int argc, char** argv) {
                         }
                         push_da(&book_buf, '\n');
                         print_string(&book_buf, "#endif // __BK_%lu_H__\n", file_idx);
-                        char* out_file = fmt("%s/%.*s.bk.h", out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
+                        char* out_file = tfmt("%s/%.*s.bk.h", out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
                         write_entire_file(out_file, &book_buf);
                         file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
                     }
