@@ -16,8 +16,9 @@ typedef struct {
 // This is the default BK_FMT implementation with `fprintf`
 #define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #define DISABLE_PARSE
-#include "../gen/people.bk.c"
-#include "../gen/dump_people.bk.c"
+#define BK_IMPLEMENTATION
+#include "../gen/people.bk.h"
+#include "../gen/dump_people.bk.h"
 
 int main() {
     Person manager_personal = {

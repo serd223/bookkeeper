@@ -4,7 +4,8 @@
 #include <sys/stat.h>
 #include "people.h"
 #include "../thirdparty/cJSON.h"
-#include "../gen/people.bk.c"
+#define BK_IMPLEMENTATION
+#include "../gen/people.bk.h"
 
 #define JSON_FILE "./examples/manager.json"
 int main() {
