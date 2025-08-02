@@ -159,8 +159,8 @@ bool get_expect_ids(stb_lexer* lex, int ids_count, ...);
 void analyze_file(String content, CCompounds* out, bool derive_all);
 
 // Code generation
-void gen_dump_decl(String* book_buf, CCompound* ty);
-void gen_parse_decl(String* book_buf, CCompound* ty);
+size_t gen_dump_decl(String* book_buf, CCompound* ty);
+size_t gen_parse_decl(String* book_buf, CCompound* ty);
 void gen_dump_impl(String* book_buf, CCompound* ty);
 void gen_parse_impl(String* book_buf, CCompound* ty);
 #define BK_GEN_IMPLEMENTATION_MACRO "BK_IMPLEMENTATION"
@@ -215,19 +215,22 @@ int main(int argc, char** argv) {
                     print_string(&book_buf, "#ifndef BK_OFFSET_t\n");
                     print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
                     print_string(&book_buf, "#endif // BK_OFFSET_t\n");
+                    size_t num_decls = 0;
                     for (size_t i = 0; i < types.len; ++i) {
-                        gen_dump_decl(&book_buf, types.items + i);
-                        gen_parse_decl(&book_buf, types.items + i);
+                        num_decls += gen_dump_decl(&book_buf, types.items + i);
+                        num_decls += gen_parse_decl(&book_buf, types.items + i);
                     }
-                    for (size_t i = 0; i < types.len; ++i) {
-                        gen_dump_impl(&book_buf, types.items + i);
-                        gen_parse_impl(&book_buf, types.items + i);
+                    if (num_decls > 0) {
+                        for (size_t i = 0; i < types.len; ++i) {
+                            gen_dump_impl(&book_buf, types.items + i);
+                            gen_parse_impl(&book_buf, types.items + i);
+                        }
+                        push_da(&book_buf, '\n');
+                        print_string(&book_buf, "#endif // __BK_%lu_H__\n", file_idx);
+                        char* out_file = fmt("%s/%.*s.bk.h", out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
+                        write_entire_file(out_file, &book_buf);
+                        file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
                     }
-                    push_da(&book_buf, '\n');
-                    print_string(&book_buf, "#endif // __BK_%lu_H__\n", file_idx);
-                    char* out_file = fmt("%s/%.*s.bk.h", out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
-                    write_entire_file(out_file, &book_buf);
-                    file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
                 }
             }
         }
@@ -460,27 +463,34 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
     }
 }
 
-void gen_dump_decl(String* book_buf, CCompound* ty) {
-    if (ty->derived_schemas == 0) return;
+size_t gen_dump_decl(String* book_buf, CCompound* ty) {
+    size_t count = 0;
+    if (ty->derived_schemas == 0) return count;
     print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");
     if (ty->derived_schemas & DERIVE_JSON) {
         print_string(book_buf, "void dump_json_%s(%s* item, void* dst);\n", ty->name, ty->name);
+        ++count;
     }
     if (ty->derived_schemas & DERIVE_DEBUG) {
         print_string(book_buf, "void __indent_dump_debug_%s(%s* item, void* dst, int indent);\n", ty->name, ty->name);
         print_string(book_buf, "void dump_debug_%s(%s* item, void* dst);\n", ty->name, ty->name);
+        count += 2;
     }
     print_string(book_buf, "#endif // DISABLE_DUMP\n");
+    return count;
 }
 
-void gen_parse_decl(String* book_buf, CCompound* ty) {
-    if (ty->derived_schemas == 0) return;
+size_t gen_parse_decl(String* book_buf, CCompound* ty) {
+    size_t count = 0;
+    if (ty->derived_schemas == 0) return count;
     print_string(book_buf, "\n#ifndef DISABLE_PARSE\n");
     if (ty->derived_schemas & DERIVE_JSON) {
         print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst);\n", ty->name, ty->name);
         print_string(book_buf, "int parse_json_%s(const char* src, unsigned long len, %s* dst);\n", ty->name, ty->name);
+        count += 2;
     }
     print_string(book_buf, "#endif // DISABLE_PARSE\n");
+    return count;
 }
 
 void gen_dump_impl(String* book_buf, CCompound* ty) {
