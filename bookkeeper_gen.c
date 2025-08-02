@@ -14,22 +14,6 @@
 
 static char tmp_str[4096];
 #define fmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
-#define bk_log(level, ...) do {\
-    switch (level) {\
-    case LOG_INFO: {\
-        fprintf(stderr, "%s:%d: [INFO] ", __FILE__, __LINE__);\
-    } break;\
-    case LOG_WARN: {\
-        fprintf(stderr, "%s:%d: [WARN] ", __FILE__, __LINE__);\
-    } break;\
-    case LOG_ERROR: {\
-        fprintf(stderr, "%s:%d [ERROR] ", __FILE__, __LINE__);\
-    } break;\
-    default: abort();\
-    }\
-    fprintf(stderr, __VA_ARGS__);\
-} while(0)
-
 #define bk_log_loc(level, source, line, ...) do {\
     switch (level) {\
     case LOG_INFO: {\
@@ -39,12 +23,14 @@ static char tmp_str[4096];
         fprintf(stderr, "%s:%d: [WARN] ", source, line);\
     } break;\
     case LOG_ERROR: {\
-        fprintf(stderr, "%s:%d [ERROR] ", source, line);\
+        fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
     } break;\
     default: abort();\
     }\
     fprintf(stderr, __VA_ARGS__);\
 } while(0)
+
+#define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
 
 typedef enum {
     LOG_INFO,
@@ -142,10 +128,9 @@ typedef struct {
     (str)->len += len;                                                              \
 } while(0)
 
-
-
 // General utility functions
-bool read_entire_file(const char* file_name, String* dst);
+bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line);
+#define read_entire_file(file_name, dst) read_entire_file_loc(file_name, dst, __FILE__, __LINE__)
 bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
 
@@ -239,13 +224,13 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-bool read_entire_file(const char* file_name, String* dst) {
+bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line) {
     struct stat s = {0};
     stat(file_name, &s);
     size_t f_len = s.st_size / sizeof(char);
     FILE* f = fopen(file_name, "rb");
     if (f == NULL) {
-        bk_log(LOG_ERROR, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
+        bk_log_loc(LOG_ERROR, source_file, source_line, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
         return false;
     }
     if (f_len >= (dst->cap - dst->len)) {
@@ -259,7 +244,7 @@ bool read_entire_file(const char* file_name, String* dst) {
     size_t bytes_read = fread(dst->items + dst->len, sizeof(char), f_len, f) / sizeof(char);
     if (bytes_read <= 0) {
         if (ferror(f)) {
-            bk_log(LOG_ERROR, "Couldn't read from file '%s': %s\n", file_name, strerror(errno));
+            bk_log_loc(LOG_ERROR, source_file, source_line, "Couldn't read from file '%s': %s\n", file_name, strerror(errno));
             fclose(f);
             return false;
         }
@@ -272,12 +257,12 @@ bool read_entire_file(const char* file_name, String* dst) {
 bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line) {
     FILE* f = fopen(file_name, "w");
     if (f == NULL) {
-        bk_log(LOG_ERROR, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
+        bk_log_loc(LOG_ERROR, source_file, source_line, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
         return false;
     }
     if (fwrite(src->items, sizeof *src->items, src->len, f) <= 0) {
         if (ferror(f)) {
-            bk_log(LOG_ERROR, "Couldn't write to file '%s': %s\n", file_name, strerror(errno));
+            bk_log_loc(LOG_ERROR, source_file, source_line, "Couldn't write to file '%s': %s\n", file_name, strerror(errno));
             fclose(f);
             return false;
         }
