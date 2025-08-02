@@ -135,12 +135,12 @@ bool write_entire_file_loc(const char* file_name, String* src, const char* sourc
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
 
 // Parsing C code
-bool va_get_expect_ids(stb_lexer* lex, int ids_count, va_list args);
-bool va_get_expect_tokens(stb_lexer* lex, int ids_count, va_list args);
-bool peek_ids(stb_lexer* lex, int ids_count, ...);
-bool peek_tokens(stb_lexer* lex, int ids_count, ...);
-bool get_expect_tokens(stb_lexer* lex, int ids_count, ...);
-bool get_expect_ids(stb_lexer* lex, int ids_count, ...);
+bool va_get_expect_ids(stb_lexer* lex, va_list args);
+bool va_get_expect_tokens(stb_lexer* lex, va_list args);
+bool peek_ids(stb_lexer* lex, ...);
+bool peek_tokens(stb_lexer* lex, ...);
+bool get_expect_tokens(stb_lexer* lex, ...);
+bool get_expect_ids(stb_lexer* lex,...);
 void analyze_file(String content, CCompounds* out, bool derive_all);
 
 // Code generation
@@ -272,57 +272,61 @@ bool write_entire_file_loc(const char* file_name, String* src, const char* sourc
     return true;
 }
 
-bool va_get_expect_ids(stb_lexer* lex, int ids_count, va_list args) {
-    for (size_t i = 0; i < ids_count; ++i) {
+bool va_get_expect_ids(stb_lexer* lex, va_list args) {
+    const char* expected = va_arg(args, const char*);
+    for (; expected != NULL; expected = va_arg(args, const char*)) {
         stb_c_lexer_get_token(lex);
-        const char* expected = va_arg(args, const char*);
         if (!(lex->token == CLEX_id))           return false;
         if (strcmp(lex->string, expected) != 0) return false;
     }
     return true;
 }
 
-bool va_get_expect_tokens(stb_lexer* lex, int ids_count, va_list args) {
-    for (size_t i = 0; i < ids_count; ++i) {
+bool va_get_expect_tokens(stb_lexer* lex, va_list args) {
+    int expected = va_arg(args, int);
+    for (; expected > -1 ; expected = va_arg(args, int)) {
         stb_c_lexer_get_token(lex);
-        int expected = va_arg(args, int);
         if (!(lex->token == expected)) return false;
     }
     return true;
 }
 
-bool peek_ids(stb_lexer* lex, int ids_count, ...) {
+/// Arguments should be of type `const char*` and end with NULL
+bool peek_ids(stb_lexer* lex, ...) {
     va_list args;
-    va_start(args, ids_count);
+    va_start(args, lex);
     char* pp = lex->parse_point;
-    bool res = va_get_expect_ids(lex, ids_count, args);
+    bool res = va_get_expect_ids(lex, args);
     lex->parse_point = pp;
     va_end(args);
     return res;
 }
 
-bool peek_tokens(stb_lexer* lex, int ids_count, ...) {
+/// Arguments should be of type `int` and end with -1
+bool peek_tokens(stb_lexer* lex, ...) {
     va_list args;
-    va_start(args, ids_count);
+    va_start(args, lex);
     char* pp = lex->parse_point;
-    bool res = va_get_expect_tokens(lex, ids_count, args);
+    bool res = va_get_expect_tokens(lex, args);
     lex->parse_point = pp;
     va_end(args);
     return res;
 }
 
-bool get_expect_tokens(stb_lexer* lex, int ids_count, ...) {
+/// Arguments should be of type `int` and end with -1
+bool get_expect_tokens(stb_lexer* lex, ...) {
     va_list args;
-    va_start(args, ids_count);
-    bool res = va_get_expect_tokens(lex, ids_count, args);
+    va_start(args, lex);
+    bool res = va_get_expect_tokens(lex, args);
     va_end(args);
     return res;
 }
 
-bool get_expect_ids(stb_lexer* lex, int ids_count, ...) {
+/// Arguments should be of type `const char*` and end with NULL
+bool get_expect_ids(stb_lexer* lex, ...) {
     va_list args;
-    va_start(args, ids_count);
-    bool res = va_get_expect_ids(lex, ids_count, args);
+    va_start(args, lex);
+    bool res = va_get_expect_ids(lex, args);
     va_end(args);
     return res;
 }
@@ -337,13 +341,13 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
         if (!lex.token || lex.token == CLEX_eof) break;
         lex.parse_point = pp;
         // NOTE: this tool can only understand typedef struct {} Name; style definitions
-        if (get_expect_ids(&lex, 2, "typedef", "struct")) {
-            if (!(get_expect_tokens(&lex, 1, '{'))) continue;
+        if (get_expect_ids(&lex, "typedef", "struct", NULL)) {
+            if (!(get_expect_tokens(&lex, '{', -1))) continue;
             CCompound strct = {0};
             if (derive_all) strct.derived_schemas |= DERIVE_ALL;
             for (;;) {
                 Field field = {0};
-                if (peek_tokens(&lex, 5, CLEX_id, CLEX_id, '*', CLEX_id, ';') && peek_ids(&lex, 2, "const", "char")) { 
+                if (peek_tokens(&lex, CLEX_id, CLEX_id, '*', CLEX_id, ';', -1) && peek_ids(&lex, "const", "char", NULL)) { 
                     stb_c_lexer_get_token(&lex); // const
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
@@ -354,7 +358,7 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
                     field.type.type = CSTRING;
                     push_da(&strct.fields, field);
 
-                } else if (peek_tokens(&lex, 4, CLEX_id, '*', CLEX_id, ';') && peek_ids(&lex, 1, "char")) {
+                } else if (peek_tokens(&lex, CLEX_id, '*', CLEX_id, ';', -1) && peek_ids(&lex, "char", NULL)) {
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
                     stb_c_lexer_get_token(&lex); // name
@@ -363,11 +367,11 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
                     field.type.kind = CPRIMITIVE;
                     field.type.type = CSTRING;
                     push_da(&strct.fields, field);
-                } else if (peek_tokens(&lex, 4, CLEX_id, CLEX_id, CLEX_id, ';')) {
+                } else if (peek_tokens(&lex, CLEX_id, CLEX_id, CLEX_id, ';', -1)) {
                     bool is_known_primitive = true;
-                    if (peek_ids(&lex, 2, "unsigned", "int")) {
+                    if (peek_ids(&lex, "unsigned", "int", NULL)) {
                         field.type.type = CUINT;
-                    } else if (peek_ids(&lex, 2, "unsigned", "long")) {
+                    } else if (peek_ids(&lex, "unsigned", "long", NULL)) {
                         field.type.type = CULONG;
                     } else {
                         is_known_primitive = false;
@@ -385,21 +389,21 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
                         break;
                     }
                     
-                } else if (peek_tokens(&lex, 3, CLEX_id, CLEX_id, ';')) {
+                } else if (peek_tokens(&lex, CLEX_id, CLEX_id, ';', -1)) {
                     bool is_known_primitive = true;
-                    if (peek_ids(&lex, 1, "int")) {
+                    if (peek_ids(&lex, "int", NULL)) {
                         field.type.type = CINT;
-                    } else if (peek_ids(&lex, 1, "long")) {
+                    } else if (peek_ids(&lex, "long", NULL)) {
                         field.type.type = CLONG;
-                    } else if (peek_ids(&lex, 1, "size_t")) {
+                    } else if (peek_ids(&lex, "size_t", NULL)) {
                         field.type.type = CULONG;
-                    } else if (peek_ids(&lex, 1, "double") || peek_ids(&lex, 1, "float")) {
+                    } else if (peek_ids(&lex, "double", NULL) || peek_ids(&lex, "float", NULL)) {
                         field.type.type = CFLOAT;
-                    } else if (peek_ids(&lex, 1, "char")) {
+                    } else if (peek_ids(&lex, "char", NULL)) {
                         field.type.type = CCHAR;
-                    } else if (peek_ids(&lex, 1, "double") || peek_ids(&lex, 1, "float")) {
+                    } else if (peek_ids(&lex, "double", NULL) || peek_ids(&lex, "float", NULL)) {
                         field.type.type = CFLOAT;
-                    } else if (peek_ids(&lex, 1, "bool")) {
+                    } else if (peek_ids(&lex, "bool", NULL)) {
                         field.type.type = CBOOL;
                     } else {
                         is_known_primitive = false;
@@ -422,14 +426,14 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
                 }
             }
             // `continue`ing here can leak unused field/type names of partially correct structs
-            if (!get_expect_tokens(&lex, 2, '}', CLEX_id)) continue;
+            if (!get_expect_tokens(&lex, '}', CLEX_id, -1)) continue;
             strct.name = strdup(lex.string); // leaks (static data)
-            while (peek_tokens(&lex, 3, CLEX_id, '(', ')')) {
-                if (peek_ids(&lex, 1, "derive_json")) {
+            while (peek_tokens(&lex, CLEX_id, '(', ')', -1)) {
+                if (peek_ids(&lex, "derive_json", NULL)) {
                     strct.derived_schemas |= DERIVE_JSON;
-                } else if (peek_ids(&lex, 1, "derive_debug")) {
+                } else if (peek_ids(&lex, "derive_debug", NULL)) {
                     strct.derived_schemas |= DERIVE_DEBUG;
-                } else if (peek_ids(&lex, 1, "derive_all")) {
+                } else if (peek_ids(&lex, "derive_all", NULL)) {
                     strct.derived_schemas |= DERIVE_ALL;
                 }else {
                     // Shortcircuits out of the loop so it doesn't 'get' any tokens
