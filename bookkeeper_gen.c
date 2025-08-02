@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
 #define STB_C_LEXER_IMPLEMENTATION
@@ -10,6 +11,46 @@
 #ifdef DEBUG
 #define printf(...)
 #endif
+
+static char tmp_str[4096];
+#define fmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
+#define bk_log(level, ...) do {\
+    switch (level) {\
+    case LOG_INFO: {\
+        fprintf(stderr, "%s:%d: [INFO] ", __FILE__, __LINE__);\
+    } break;\
+    case LOG_WARN: {\
+        fprintf(stderr, "%s:%d: [WARN] ", __FILE__, __LINE__);\
+    } break;\
+    case LOG_ERROR: {\
+        fprintf(stderr, "%s:%d [ERROR] ", __FILE__, __LINE__);\
+    } break;\
+    default: abort();\
+    }\
+    fprintf(stderr, __VA_ARGS__);\
+} while(0)
+
+#define bk_log_loc(level, source, line, ...) do {\
+    switch (level) {\
+    case LOG_INFO: {\
+        fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+    } break;\
+    case LOG_WARN: {\
+        fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+    } break;\
+    case LOG_ERROR: {\
+        fprintf(stderr, "%s:%d [ERROR] ", source, line);\
+    } break;\
+    default: abort();\
+    }\
+    fprintf(stderr, __VA_ARGS__);\
+} while(0)
+
+typedef enum {
+    LOG_INFO,
+    LOG_WARN,
+    LOG_ERROR,
+} Log_Level;
 
 typedef struct {
     char* items;
@@ -101,23 +142,137 @@ typedef struct {
     (str)->len += len;                                                              \
 } while(0)
 
-void read_entire_file(const char* file_name, String* out) {
+
+
+// General utility functions
+bool read_entire_file(const char* file_name, String* dst);
+bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
+#define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
+
+// Parsing C code
+bool va_get_expect_ids(stb_lexer* lex, int ids_count, va_list args);
+bool va_get_expect_tokens(stb_lexer* lex, int ids_count, va_list args);
+bool peek_ids(stb_lexer* lex, int ids_count, ...);
+bool peek_tokens(stb_lexer* lex, int ids_count, ...);
+bool get_expect_tokens(stb_lexer* lex, int ids_count, ...);
+bool get_expect_ids(stb_lexer* lex, int ids_count, ...);
+void analyze_file(String content, CCompounds* out, bool derive_all);
+
+// Code generation
+void gen_dump_decl(String* book_buf, CCompound* ty);
+void gen_parse_decl(String* book_buf, CCompound* ty);
+void gen_dump_impl(String* book_buf, CCompound* ty);
+void gen_parse_impl(String* book_buf, CCompound* ty);
+
+int main(int argc, char** argv) {
+    bool derive_all = false;
+    char* input_path;
+    char* out_path;
+    if (argc < 3) {
+        printf("Usage: %s [search directory] [output directory]\n", argv[0]);
+        return 1;
+    } else {
+        input_path = argv[1];
+        out_path = argv[2];
+    }
+
+    String book_buf = {0};
+    print_string(&book_buf, "#define derive_json(...)\n");
+    print_string(&book_buf, "#define derive_debug(...)\n");
+    print_string(&book_buf, "#define derive_all(...)\n");
+    write_entire_file(fmt("%s/derives.h", out_path), &book_buf);
+
+    CCompounds types = {0}; // leaks (static data)
+    String file_buf = {0}; // leaks (static data)
+    book_buf.len = 0;
+    DIR* input_dir = opendir(input_path);
+    for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
+        if (ent->d_type == DT_REG) {
+            if (
+                strcmp(ent->d_name + strlen(ent->d_name) - 2, ".c") == 0 ||
+                strcmp(ent->d_name + strlen(ent->d_name) - 2, ".h") == 0
+            ) {
+                bk_log(LOG_INFO, "Analyzing file: %s\n", ent->d_name);
+                file_buf.len = 0;
+                if (!read_entire_file(fmt("%s/%s", input_path, ent->d_name), &file_buf)) continue;
+
+                types.len = 0;
+                analyze_file(file_buf, &types, derive_all);
+                bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
+                book_buf.len = 0;
+                if (types.len > 0) {
+                    print_string(&book_buf, "#ifndef BK_FMT\n");
+                    print_string(&book_buf, "#define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)\n");
+                    print_string(&book_buf, "#endif // BK_FMT\n");
+                    print_string(&book_buf, "#ifndef BK_OFFSET_t\n");
+                    print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
+                    print_string(&book_buf, "#endif // BK_OFFSET_t\n");
+                    for (size_t i = 0; i < types.len; ++i) {
+                        gen_dump_decl(&book_buf, types.items + i);
+                        gen_parse_decl(&book_buf, types.items + i);
+                    }
+                    for (size_t i = 0; i < types.len; ++i) {
+                        gen_dump_impl(&book_buf, types.items + i);
+                        gen_parse_impl(&book_buf, types.items + i);
+                    }
+                    push_da(&book_buf, '\n');
+                    char* out_file = fmt("%s/%.*s.bk.c", out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
+                    write_entire_file(out_file, &book_buf);
+                }
+            }
+        }
+    }
+    closedir(input_dir);
+    return 0;
+}
+
+bool read_entire_file(const char* file_name, String* dst) {
     struct stat s = {0};
     stat(file_name, &s);
     size_t f_len = s.st_size / sizeof(char);
-    if (f_len >= (out->cap - out->len)) {
-        out->cap += f_len; // allocate extra space beacuse why not ram is cheap
-        if (out->items) {
-            out->items = realloc(out->items, out->cap);
+    FILE* f = fopen(file_name, "rb");
+    if (f == NULL) {
+        bk_log(LOG_ERROR, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
+        return false;
+    }
+    if (f_len >= (dst->cap - dst->len)) {
+        dst->cap += f_len; // allocate extra space beacuse why not ram is cheap
+        if (dst->items) {
+            dst->items = realloc(dst->items, dst->cap);
         } else {
-            out->items = malloc(out->cap);
+            dst->items = malloc(dst->cap);
         }
     }
-    FILE* f = fopen(file_name, "rb");
-    out->len += fread(out->items + out->len, sizeof(char), f_len, f) / sizeof(char);
+    size_t bytes_read = fread(dst->items + dst->len, sizeof(char), f_len, f) / sizeof(char);
+    if (bytes_read <= 0) {
+        if (ferror(f)) {
+            bk_log(LOG_ERROR, "Couldn't read from file '%s': %s\n", file_name, strerror(errno));
+            fclose(f);
+            return false;
+        }
+    }
+    dst->len += bytes_read; 
     fclose(f);
+    return true;
 }
 
+bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line) {
+    FILE* f = fopen(file_name, "w");
+    if (f == NULL) {
+        bk_log(LOG_ERROR, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
+        return false;
+    }
+    if (fwrite(src->items, sizeof *src->items, src->len, f) <= 0) {
+        if (ferror(f)) {
+            bk_log(LOG_ERROR, "Couldn't write to file '%s': %s\n", file_name, strerror(errno));
+            fclose(f);
+            return false;
+        }
+    } 
+    fclose(f);
+    bk_log_loc(LOG_INFO, source_file, source_line, "Generated file: %s\n", file_name);
+    return true;
+}
 
 bool va_get_expect_ids(stb_lexer* lex, int ids_count, va_list args) {
     for (size_t i = 0; i < ids_count; ++i) {
@@ -295,84 +450,6 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
     }
 }
 
-#define fmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
-
-void gen_dump_decl(String* book_buf, CCompound* ty);
-void gen_parse_decl(String* book_buf, CCompound* ty);
-void gen_dump_impl(String* book_buf, CCompound* ty);
-void gen_parse_impl(String* book_buf, CCompound* ty);
-char tmp_str[4096];
-int main(int argc, char** argv) {
-    bool derive_all = false;
-    char* root_dir;
-    DIR* pwd;
-    // TODO: Make a proper flag system instead of this mess
-    if (argc > 1) {
-        // normally you should escape this but who cares tbh
-        root_dir = argv[1];
-        pwd = opendir(root_dir);
-        if (!pwd) {
-            root_dir = ".";
-            pwd = opendir(root_dir);
-            if (!pwd) return 1;
-            if (strcmp(argv[1], "--derive-all") == 0) {
-                derive_all = true;
-            }
-        };
-        if (argc > 2) {
-            if (strcmp(argv[2], "--derive-all") == 0) {
-                derive_all = true;
-            }
-        }
-    } else {
-        root_dir = ".";
-        pwd = opendir(root_dir);
-        if (!pwd) return 1;
-    }
-
-    CCompounds types = {0}; // leaks (static data)
-    String file_buf = {0}; // leaks (static data)
-    for (struct dirent* ent = readdir(pwd); ent; ent = readdir(pwd)) {
-        if (ent->d_type == DT_REG) {
-            if (
-                strcmp(ent->d_name + strlen(ent->d_name) - 2, ".c") == 0 ||
-                strcmp(ent->d_name + strlen(ent->d_name) - 2, ".h") == 0
-            ) {
-                printf("Analyzing file: %s\n", ent->d_name);
-                file_buf.len = 0;
-                read_entire_file(fmt("%s/%s", root_dir, ent->d_name), &file_buf); // TODO: check errors
-                analyze_file(file_buf, &types, derive_all);
-            }
-        }
-    }
-    printf("Analayzed %lu types.\n", types.len);
-    String book_buf = {0};
-    FILE* book_header = fopen("bookkeeper.h", "w");
-    fprintf(book_header, "#define derive_json(...)\n");
-    fprintf(book_header, "#define derive_debug(...)\n");
-    fprintf(book_header, "#define derive_all(...)\n");
-    fclose(book_header);
-    FILE* book_impl = fopen("bookkeeper.c", "w"); // TODO: check errors
-    print_string(&book_buf, "#ifndef BK_FMT\n");
-    print_string(&book_buf, "#define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)\n");
-    print_string(&book_buf, "#endif // BK_FMT\n");
-    print_string(&book_buf, "#ifndef BK_OFFSET_t\n");
-    print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
-    print_string(&book_buf, "#endif // BK_OFFSET_t\n");
-    for (size_t i = 0; i < types.len; ++i) {
-        gen_dump_decl(&book_buf, types.items + i);
-        gen_parse_decl(&book_buf, types.items + i);
-    }
-    for (size_t i = 0; i < types.len; ++i) {
-        gen_dump_impl(&book_buf, types.items + i);
-        gen_parse_impl(&book_buf, types.items + i);
-    }
-    push_da(&book_buf, '\n');
-    fwrite(book_buf.items, sizeof *book_buf.items, book_buf.len, book_impl); // TODO: check errors
-    fclose(book_impl);
-    return 0;
-}
-
 void gen_dump_decl(String* book_buf, CCompound* ty) {
     if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");
@@ -385,6 +462,7 @@ void gen_dump_decl(String* book_buf, CCompound* ty) {
     }
     print_string(book_buf, "#endif // DISABLE_DUMP\n");
 }
+
 void gen_parse_decl(String* book_buf, CCompound* ty) {
     if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifndef DISABLE_PARSE\n");
@@ -393,6 +471,7 @@ void gen_parse_decl(String* book_buf, CCompound* ty) {
     }
     print_string(book_buf, "#endif // DISABLE_PARSE\n");
 }
+
 void gen_dump_impl(String* book_buf, CCompound* ty) {
     if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");

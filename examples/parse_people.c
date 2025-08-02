@@ -4,7 +4,7 @@
 #include <sys/stat.h>
 #include "people.h"
 #include "../thirdparty/cJSON.h"
-#include "../gen/bookkeeper.c"
+#include "../gen/people.bk.c"
 
 #define JSON_FILE "./examples/manager.json"
 int main() {
