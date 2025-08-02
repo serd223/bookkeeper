@@ -33,8 +33,8 @@ Here is a list of dependencies the **generated code** may depend on:
 
 # Build Instructions
 ## Prerequisites
-    - [clang](https://releases.llvm.org/download.html)
-    - [git](https://git-scm.com/)
+ - [clang](https://releases.llvm.org/download.html)
+ - [git](https://git-scm.com/)
 
 ## Instructions
 First, you will need to clone this repository and `cd` into the repository's root directory:
