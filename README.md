@@ -1,7 +1,6 @@
 # Overview
 `bookkeeper` is a tool inspired by the rust [`serde`](https://serde.rs/) crate and [this stream from Tsoding](https://youtu.be/hnM6aSpWJ8c?si=7WqJW0dy8oaJtdmm).
 
-# Usage
 The `bookkeeper_gen` tool accepts a search path and an output path. It scans the search path for any `.c` or `.h` files and collects all `typedef struct { field_type field; } StructName` style struct definitions inside those files. Each struct can 'derive' functionalities that will be included in the generated code. For instance, if you want your struct to support JSON parsing/dumping you would write:
 
 ```c
@@ -26,9 +25,14 @@ int parse_$schema$_$type$(char* src, unsigned long len, $type$* dst) {
 Dump functions use a macro named `BK_FMT` defined inside the `*.bk.h` files to output into the provided `dst` buffer. The `void* dst` that is accepted through the `dump` family of functions is directly passed to `BK_FMT` so the underlying type of `dst` depends on your `BK_FMT` implementation. The default implementation uses `fprintf` and expects `dst` to be `FILE*` but it can be redefined inside your code before including your `*.bk.h` file.
 (See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
 
-# Dependencies
+# Using `bookkeeper` In Your Project
+You _can_ just tell people to put the `bookkeeper_gen` executable in their `PATH` while compiling your project but it is probably better to just include the source code of `bookkeeper_gen` in your project and build it during your build process. This is pretty easy since the entire source code of the tool is inside [`bookkeeper_gen.c`](https://github.com/serd223/bookkeeper/blob/master/bookkeeper_gen.c) (This source file also includes its license inside so you don't have to worry about that). The only caveat with this approach is that you also have to include [`stb_c_lexer`](https://github.com/nothings/stb/blob/master/stb_c_lexer.h) in your project but that is a pretty lightweight single file dependency, as well.
+
+You can build `bookkeeper_gen.c` however you like as long as it can find `stb_c_lexer.h`. For instructions on how to build the contents of _this repository_, see the [Build Instructions section](https://github.com/serd223/bookkeeper/tree/master?tab=readme-ov-file#build-instructions).
+
+# Dependencies of Generated Code
 Here is a list of dependencies the **generated code** may depend on:
-## parse_json
+## parse_json_*
  - These functions depend on the [cJSON](https://github.com/DaveGamble/cJSON) library to parse JSON. Users are expected to have already included this library before including generated code. (See [parse_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/parse_people.c))
 
 # Build Instructions
@@ -54,7 +58,7 @@ You can build `bookkeeper_gen` by running:
     $ make
 ```
 
-## Building examples
+## Building Examples
 If you want to build the `dump_people` example, run: (auto-generates necessary files)
 ```console
     $ make dump
