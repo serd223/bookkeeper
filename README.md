@@ -2,7 +2,7 @@
 `bookkeeper` is a tool inspired by the rust [`serde`](https://serde.rs/) crate and [this stream from Tsoding](https://youtu.be/hnM6aSpWJ8c?si=7WqJW0dy8oaJtdmm).
 
 # Usage
-The `bookkeeper_gen` tool accepts a search path and an output path optional flags. It scans the search path for any `.c` or `.h` files and collects all `typedef struct { field_type field; } StructName` style struct definitions inside those files. Each struct can 'derive' functionalities that will be included in the generated code. For instance, if you want your struct to support JSON parsing/dumping you would write:
+The `bookkeeper_gen` tool accepts a search path and an output path. It scans the search path for any `.c` or `.h` files and collects all `typedef struct { field_type field; } StructName` style struct definitions inside those files. Each struct can 'derive' functionalities that will be included in the generated code. For instance, if you want your struct to support JSON parsing/dumping you would write:
 
 ```c
 typedef struct {
