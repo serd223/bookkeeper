@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 // You don't have to put all your definitions in a seperate header file, you can still use
-// `bookkeeper` inside of your regular C files. You just need to put the `bookkeeper.c` include
+// `bookkeeper` inside of your regular C files. You just need to put the `*.bk.h` include
 // after your struct definitions. (since those function declarations and implementations need the type)
 typedef struct {
     Manager inner;
