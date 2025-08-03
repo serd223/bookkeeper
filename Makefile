@@ -1,4 +1,4 @@
-CFLAGS = -I./thirdparty/
+CFLAGS = -I./thirdparty/ -Wunused-parameter
 
 comma := ,
 empty :=
@@ -9,9 +9,11 @@ b := $(file >> .clangd, 	Add: [$(FLAGS_LIST)])
 
 .PHONY: default clean dump gen parse bk
 
-default: build/bookkeeper_gen build/bookkeeper_gen_debug
+default: build/bookkeeper_gen
 
 bk: ./build/bookkeeper_gen
+
+debug: ./build/bookkeeper_gen_debug
 
 gen: ./build/bookkeeper_gen ./examples/people.h ./examples/dump_people.c
 	./build/bookkeeper_gen ./examples ./gen
@@ -19,6 +21,8 @@ gen: ./build/bookkeeper_gen ./examples/people.h ./examples/dump_people.c
 dump: ./build/dump_people
 
 parse: ./build/parse_people
+
+schema_ext: ./build/bookkeeper_gen_ext
 
 build/bookkeeper_gen: bookkeeper_gen.c ./thirdparty/stb_c_lexer.h
 	clang $(CFLAGS) bookkeeper_gen.c -o ./build/bookkeeper_gen
@@ -31,6 +35,9 @@ build/dump_people: ./examples/people.h ./examples/dump_people.c gen
 
 build/parse_people: ./examples/people.h ./examples/parse_people.c gen ./thirdparty/cJSON.c ./thirdparty/cJSON.h
 	clang $(CFLAGS) -g ./examples/parse_people.c ./thirdparty/cJSON.c -o ./build/parse_people
+
+build/bookkeeper_gen_ext: ./bookkeeper_gen.c ./bookkeper_gen_ext.h ./thirdparty/stb_c_lexer.h
+	clang $(CFLAGS) ./examples/bookkeeper_gen_ext.c -o ./build/bookkeeper_gen_ext
 
 clean:
 	rm -r ./build/
