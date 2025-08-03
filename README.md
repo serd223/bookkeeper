@@ -72,6 +72,13 @@ In order to add an extension to `bookkeeper`, you will need to wrap the `bookkee
     #include "bookkeeper_gen.c"
 ```
 
+In order to test the provided extension example, you can run:
+```console
+    $ make schema_ext
+    $ ./build/bookkeeper_gen_ext ./examples ./gen
+```
+You can then inspect the generated files inside the `gen` folder to see the generated example schema functions.
+
 # Build Instructions
 ## Prerequisites
  - [clang](https://releases.llvm.org/download.html)
