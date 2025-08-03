@@ -10,10 +10,12 @@ typedef struct {
 } ManagerWithSalary derive_all();
 
 
-// This is how the `offset` variable could be used if necessary
+// This is how you could redefine BK_FMT (and also make use of `offset`)
+// #define BK_FMT_DST_t char*
 // #define BK_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)
 
 // This is the default BK_FMT implementation with `fprintf`
+#define BK_FMT_DST_t FILE*
 #define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #define DISABLE_PARSE
 #define BK_IMPLEMENTATION

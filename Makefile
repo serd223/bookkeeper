@@ -33,4 +33,7 @@ build/parse_people: ./examples/people.h ./examples/parse_people.c gen ./thirdpar
 	clang $(CFLAGS) -g ./examples/parse_people.c ./thirdparty/cJSON.c -o ./build/parse_people
 
 clean:
-	rm -r ./build/ && mkdir -p build && rm -r ./gen && mkdir -p gen
+	rm -r ./build/
+	mkdir -p build
+	rm -r ./gen
+	mkdir -p gen

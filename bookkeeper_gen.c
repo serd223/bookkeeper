@@ -174,12 +174,13 @@ bool get_expect_ids(stb_lexer* lex,...);
 void analyze_file(String content, CCompounds* out, bool derive_all);
 
 // Code generation
-size_t gen_dump_decl(String* book_buf, CCompound* ty);
+size_t gen_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
 size_t gen_parse_decl(String* book_buf, CCompound* ty);
-void gen_dump_impl(String* book_buf, CCompound* ty);
+void gen_dump_impl(String* book_buf, CCompound* ty, const char* dst_type);
 void gen_parse_impl(String* book_buf, CCompound* ty);
 #define BK_GEN_IMPLEMENTATION_MACRO "BK_IMPLEMENTATION"
 #define BK_GEN_FMT_MACRO "BK_FMT"
+#define BK_GEN_FMT_DST_MACRO "BK_FMT_DST_t"
 
 int main(int argc, char** argv) {
     bool derive_all = false;
@@ -227,20 +228,23 @@ int main(int argc, char** argv) {
                 if (types.len > 0) {
                     print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file);
                     print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                    print_string(&book_buf, "#ifndef "BK_GEN_FMT_MACRO"\n");
-                    print_string(&book_buf, "#define "BK_GEN_FMT_MACRO"(...) offset += fprintf(dst, __VA_ARGS__)\n");
-                    print_string(&book_buf, "#endif // "BK_GEN_FMT_MACRO"\n");
+                    print_string(&book_buf, "#ifndef %s\n", BK_GEN_FMT_DST_MACRO);
+                    print_string(&book_buf, "#define %s FILE*\n", BK_GEN_FMT_DST_MACRO);
+                    print_string(&book_buf, "#endif // %s\n", BK_GEN_FMT_DST_MACRO);
+                    print_string(&book_buf, "#ifndef %s\n", BK_GEN_FMT_MACRO);
+                    print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", BK_GEN_FMT_MACRO);
+                    print_string(&book_buf, "#endif // %s\n", BK_GEN_FMT_MACRO);
                     print_string(&book_buf, "#ifndef BK_OFFSET_t\n");
                     print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
                     print_string(&book_buf, "#endif // BK_OFFSET_t\n");
                     size_t num_decls = 0;
                     for (size_t i = 0; i < types.len; ++i) {
-                        num_decls += gen_dump_decl(&book_buf, types.items + i);
+                        num_decls += gen_dump_decl(&book_buf, types.items + i, BK_GEN_FMT_DST_MACRO);
                         num_decls += gen_parse_decl(&book_buf, types.items + i);
                     }
                     if (num_decls > 0) {
                         for (size_t i = 0; i < types.len; ++i) {
-                            gen_dump_impl(&book_buf, types.items + i);
+                            gen_dump_impl(&book_buf, types.items + i, BK_GEN_FMT_DST_MACRO);
                             gen_parse_impl(&book_buf, types.items + i);
                         }
                         push_da(&book_buf, '\n');
@@ -492,17 +496,17 @@ void analyze_file(String content, CCompounds* out, bool derive_all) {
     }
 }
 
-size_t gen_dump_decl(String* book_buf, CCompound* ty) {
+size_t gen_dump_decl(String* book_buf, CCompound* ty, const char* dst_type) {
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
     print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");
     if (ty->derived_schemas & DERIVE_JSON) {
-        print_string(book_buf, "void dump_json_%s(%s* item, void* dst);\n", ty->name, ty->name);
+        print_string(book_buf, "void dump_json_%s(%s* item, %s dst);\n", ty->name, ty->name, dst_type);
         ++count;
     }
     if (ty->derived_schemas & DERIVE_DEBUG) {
-        print_string(book_buf, "void __indent_dump_debug_%s(%s* item, void* dst, int indent);\n", ty->name, ty->name);
-        print_string(book_buf, "void dump_debug_%s(%s* item, void* dst);\n", ty->name, ty->name);
+        print_string(book_buf, "void __indent_dump_debug_%s(%s* item, %s dst, int indent);\n", ty->name, ty->name, dst_type);
+        print_string(book_buf, "void dump_debug_%s(%s* item, %s dst);\n", ty->name, ty->name, dst_type);
         count += 2;
     }
     print_string(book_buf, "#endif // DISABLE_DUMP\n");
@@ -522,11 +526,11 @@ size_t gen_parse_decl(String* book_buf, CCompound* ty) {
     return count;
 }
 
-void gen_dump_impl(String* book_buf, CCompound* ty) {
+void gen_dump_impl(String* book_buf, CCompound* ty, const char* dst_type) {
     if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifdef "BK_GEN_IMPLEMENTATION_MACRO"\n#ifndef DISABLE_DUMP\n");
     if (ty->derived_schemas & DERIVE_JSON) {
-        print_string(book_buf, "void dump_json_%s(%s* item, void* dst) {\n", ty->name, ty->name);
+        print_string(book_buf, "void dump_json_%s(%s* item, %s dst) {\n", ty->name, ty->name, dst_type);
         print_string(book_buf, "    BK_OFFSET_t offset = {0};\n");
         print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"{\");\n");
         for (size_t j = 0; j < ty->fields.len; ++j) {
@@ -574,7 +578,7 @@ void gen_dump_impl(String* book_buf, CCompound* ty) {
         print_string(book_buf, "}\n");
     }
     if (ty->derived_schemas & DERIVE_DEBUG) {
-        print_string(book_buf, "void __indent_dump_debug_%s(%s* item, void* dst, int indent) {\n", ty->name, ty->name);
+        print_string(book_buf, "void __indent_dump_debug_%s(%s* item, %s dst, int indent) {\n", ty->name, ty->name, dst_type);
         print_string(book_buf, "    BK_OFFSET_t offset = {0};\n");
         print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s {\\n\", indent, \"\");\n", ty->name);
         for (size_t j = 0; j < ty->fields.len; ++j) {
@@ -621,7 +625,7 @@ void gen_dump_impl(String* book_buf, CCompound* ty) {
         print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s}\\n\", indent, \"\");\n");
         print_string(book_buf, "}\n");
 
-        print_string(book_buf, "void dump_debug_%s(%s* item, void* dst) {\n", ty->name, ty->name);
+        print_string(book_buf, "void dump_debug_%s(%s* item, %s dst) {\n", ty->name, ty->name, dst_type);
         print_string(book_buf, "    __indent_dump_debug_%s(item, dst, 0);\n", ty->name);
         print_string(book_buf, "}\n");
     }
