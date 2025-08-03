@@ -9,7 +9,6 @@ typedef struct {
     unsigned long salary;
 } ManagerWithSalary derive_all();
 
-
 // This is how you could redefine BK_FMT (and also make use of `offset`)
 // #define BK_FMT_DST_t char*
 // #define BK_FMT(...) offset += sprintf(dst + offset, __VA_ARGS__)

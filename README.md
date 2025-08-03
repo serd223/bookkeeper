@@ -1,3 +1,10 @@
+# Quick Start
+To see `bookkeeper` in action, you can build the [`dump_people`](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c) example:
+```console
+    $ make dump
+    $ ./build/dump_people
+```
+
 # Overview
 `bookkeeper` is a tool inspired by the rust [`serde`](https://serde.rs/) crate and [this stream from Tsoding](https://youtu.be/hnM6aSpWJ8c?si=7WqJW0dy8oaJtdmm).
 
@@ -22,6 +29,8 @@ int parse_$schema$_$type$(char* src, unsigned long len, $type$* dst) {
     /* generated impl */
 }
 ```
+`bookkeeper` supports user-defined schemas via the schema extension system. See the [Schema Extensions section](https://github.com/serd223/bookkeeper/tree/master?tab=readme-ov-file#schema-extensions) and the [schema extension example](https://github.com/serd223/bookkeeper/blob/master/examples/bookkeeper_gen_ext.c).
+
 Dump functions use a macro named `BK_FMT` defined inside the `*.bk.h` files to output into the provided `dst` buffer. The type of this `dst` argument for the 'dump' family of functions depends on the `BK_FMT_DST_t` macro that you should redefine if your `BK_FMT` implementation expects a different type from the default one. The default implementation uses `fprintf` and expects `dst` to be `FILE*` but it can be redefined inside your code before including your `*.bk.h` file.
 (See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
 
@@ -34,6 +43,34 @@ You can build `bookkeeper_gen.c` however you like as long as it can find `stb_c_
 Here is a list of dependencies the **generated code** may depend on:
 ## parse_json_*
  - These functions depend on the [cJSON](https://github.com/DaveGamble/cJSON) library to parse JSON. Users are expected to have already included this library before including generated code. (See [parse_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/parse_people.c))
+
+# Schema Extensions
+In order to add extension to `bookkeeper`, you will need to wrap the `bookkeeper_gen.c` file in your custom wrapper. You will need the `bookkeeper_gen_ext.h` header to have access to the necessary types in your wrapper. A simple wrapper would look like this:
+(See [examples/bookkeeper_gen_ext.c](https://github.com/serd223/bookkeeper/blob/master/examples/bookkeeper_gen_ext.c) for a full example)
+```c
+    #include "bookkeper_gen_ext.h"
+    // Common includes you probably will need in extensions
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <string.h>
+
+    size_t gen_example_dump_decl(String* book_buf, CCompound* ty, const char* dst_type) { /* impl */ }
+    size_t gen_example_parse_decl(String* book_buf, CCompound* ty) { /* impl */ }
+    void gen_example_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) { /* impl */ }
+    void gen_example_parse_impl(String* book_buf, CCompound* ty) { /* impl */ }
+
+    #define BK_GEN_EXT(...)\
+    Schema example = {\
+        .gen_dump_decl = gen_example_dump_decl,\
+        .gen_parse_decl = gen_example_parse_decl,\
+        .gen_dump_impl = gen_example_dump_impl,\
+        .gen_parse_impl = gen_example_parse_impl,\
+        .derive_attr = "derive_example"\
+    };\
+    push_da(&schemas, example);
+    // This file should be able to find `stb_c_lexer.h` since it is included by `bookkeeper_gen.c`
+    #include "bookkeeper_gen.c"
+```
 
 # Build Instructions
 ## Prerequisites
