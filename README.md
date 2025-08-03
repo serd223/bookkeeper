@@ -45,7 +45,7 @@ Here is a list of dependencies the **generated code** may depend on:
  - These functions depend on the [cJSON](https://github.com/DaveGamble/cJSON) library to parse JSON. Users are expected to have already included this library before including generated code. (See [parse_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/parse_people.c))
 
 # Schema Extensions
-In order to add extension to `bookkeeper`, you will need to wrap the `bookkeeper_gen.c` file in your custom wrapper. You will need the `bookkeeper_gen_ext.h` header to have access to the necessary types in your wrapper. A simple wrapper would look like this:
+In order to add an extension to `bookkeeper`, you will need to wrap the `bookkeeper_gen.c` file in your custom wrapper. You will need the `bookkeeper_gen_ext.h` header to have access to the necessary types in your wrapper. A simple wrapper would look like this:
 (See [examples/bookkeeper_gen_ext.c](https://github.com/serd223/bookkeeper/blob/master/examples/bookkeeper_gen_ext.c) for a full example)
 ```c
     #include "bookkeper_gen_ext.h"

@@ -231,7 +231,9 @@ int main(int argc, char** argv) {
 
     // Do whatever you want here
     #ifdef BK_GEN_EXT
-    BK_GEN_EXT()
+    do {
+        BK_GEN_EXT()
+    } while (0);
     #endif
 
     bk_log(LOG_INFO, "Number of registered schemas: %lu\n", schemas.len);
