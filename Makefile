@@ -1,4 +1,5 @@
-CFLAGS = -I./thirdparty/ -Wunused-parameter
+PWD = $(shell pwd)
+CFLAGS = -I$(PWD)/thirdparty/ -Wunused-parameter
 
 comma := ,
 empty :=
