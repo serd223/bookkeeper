@@ -587,29 +587,29 @@ void gen_dump_impl(String* book_buf, CCompound* ty, const char* dst_type) {
             case CPRIMITIVE: {
                 switch (f->type.type) {
                 case CINT: {
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%d\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(int) %s: %%d\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
                 } break;
                 case CUINT: {
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%u\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(uint) %s: %%u\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
                 } break;
                 case CLONG: {
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%ld\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(long) %s: %%ld\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
                 } break;
                 case CULONG: {
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%lu\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(ulong) %s: %%lu\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
                 } break;
                 case CFLOAT: {
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%f\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(float) %s: %%f\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
                 } break;
                 case CBOOL: {
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%s\\n\", indent + 4, \"\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(bool) %s: %%s\\n\", indent + 4, \"\", item->%s ? \"true\" : \"false\");\n", f->name, f->name);
                 } break;
                 case CSTRING: {
                     // TODO: The generated code should escape item->field before printing it
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%s\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(string) %s: %%s\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
                 } break;
                 case CCHAR: {
-                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s%s: %%c\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
+                    print_string(book_buf, "    "BK_GEN_FMT_MACRO"(\"%%*s(char) %s: %%c\\n\", indent + 4, \"\", item->%s);\n", f->name, f->name);
                 } break;
                 default: abort();
                 }
