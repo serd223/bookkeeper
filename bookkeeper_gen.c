@@ -25,7 +25,6 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
-
 #include <stdarg.h>
 #include <stdio.h>
 #include <dirent.h>
@@ -163,6 +162,7 @@ bool read_entire_file_loc(const char* file_name, String* dst, const char* source
 #define read_entire_file(file_name, dst) read_entire_file_loc(file_name, dst, __FILE__, __LINE__)
 bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
+unsigned long djb2(const char* s);
 
 // Parsing C code
 bool va_get_expect_ids(stb_lexer* lex, va_list args);
@@ -213,17 +213,20 @@ int main(int argc, char** argv) {
                 strcmp(ent->d_name + strlen(ent->d_name) - 2, ".c") == 0 ||
                 strcmp(ent->d_name + strlen(ent->d_name) - 2, ".h") == 0
             ) {
+                char* in_file = fmt("%s/%s", input_path, ent->d_name);
+                unsigned long in_hash = djb2(in_file);
+
                 bk_log(LOG_INFO, "Analyzing file: %s\n", ent->d_name);
                 file_buf.len = 0;
-                if (!read_entire_file(tfmt("%s/%s", input_path, ent->d_name), &file_buf)) continue;
+                if (!read_entire_file(in_file, &file_buf)) continue;
 
                 types.len = 0;
                 analyze_file(file_buf, &types, derive_all);
                 bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
                 book_buf.len = 0;
                 if (types.len > 0) {
-                    print_string(&book_buf, "#ifndef __BK_%lu_H__\n", file_idx);
-                    print_string(&book_buf, "#define __BK_%lu_H__\n", file_idx);
+                    print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file);
+                    print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
                     print_string(&book_buf, "#ifndef "BK_GEN_FMT_MACRO"\n");
                     print_string(&book_buf, "#define "BK_GEN_FMT_MACRO"(...) offset += fprintf(dst, __VA_ARGS__)\n");
                     print_string(&book_buf, "#endif // "BK_GEN_FMT_MACRO"\n");
@@ -241,12 +244,13 @@ int main(int argc, char** argv) {
                             gen_parse_impl(&book_buf, types.items + i);
                         }
                         push_da(&book_buf, '\n');
-                        print_string(&book_buf, "#endif // __BK_%lu_H__\n", file_idx);
+                        print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
                         char* out_file = tfmt("%s/%.*s.bk.h", out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
                         write_entire_file(out_file, &book_buf);
                         file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
                     }
                 }
+                free(in_file);
             }
         }
     }
@@ -300,6 +304,12 @@ bool write_entire_file_loc(const char* file_name, String* src, const char* sourc
     fclose(f);
     bk_log_loc(LOG_INFO, source_file, source_line, "Generated file: %s\n", file_name);
     return true;
+}
+
+unsigned long djb2(const char* s) {
+    unsigned long hash = 5381;
+    for (char c; (c = *s++);) hash = ((hash << 5) + hash) + (unsigned long) c;
+    return hash;
 }
 
 bool va_get_expect_ids(stb_lexer* lex, va_list args) {
