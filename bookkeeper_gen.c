@@ -491,7 +491,7 @@ int main(int argc, char** argv) {
 
                         push_da(&book_buf, '\n');
                         print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                        char* out_file = tfmt("%s/%.*s.bk.h", bk.out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
+                        char* out_file = tfmt("%s/%s.bk.h", bk.out_path, ent->d_name);
                         write_entire_file(out_file, &book_buf);
                         file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
                     }

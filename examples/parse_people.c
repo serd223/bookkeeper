@@ -5,7 +5,7 @@
 #include "people.h"
 #include "../thirdparty/cJSON.h"
 #define BK_IMPLEMENTATION
-#include "../gen/people.bk.h"
+#include "../gen/people.h.bk.h"
 
 #define JSON_FILE "./examples/manager.json"
 int main() {
