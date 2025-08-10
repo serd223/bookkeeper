@@ -586,14 +586,18 @@ int main(int argc, char** argv) {
                     if (num_decls > 0) {
                         print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
                         for (size_t i = 0; i < types.len; ++i) {
-                            print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                            if (types.items[i].derived_schemas != 0) {
+                                print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                            }
                             if (!bk.disable_dump) {
                                 gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
                             }
                             if (!bk.disable_parse) {
                                 gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
                             }
-                            print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                            if (types.items[i].derived_schemas != 0) {
+                                print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                            }
                         }
                         print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
 
