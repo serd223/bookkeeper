@@ -45,9 +45,9 @@ typedef struct {
     bool derive_all;
     char* input_path;
     char* out_path;
-} BkState;
+} BkConfig;
 
-static BkState bk = {0};
+static BkConfig bk = {0};
 static char tmp_str[4096];
 #define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
 #define fmt(...) strdup(tfmt(__VA_ARGS__))

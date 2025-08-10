@@ -25,6 +25,9 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
+#ifndef __BOOKKEEPER_GEN_C__
+#define __BOOKKEEPER_GEN_C__
+
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -36,9 +39,6 @@ DEALINGS IN THE SOFTWARE.
 #include <sys/stat.h>
 #define STB_C_LEXER_IMPLEMENTATION
 #include "stb_c_lexer.h"
-#ifdef DEBUG
-#define printf(...)
-#endif
 
 // NOTE: in order to keep the source code of this tool in a single file, we have to _manually_
 // sync these definitions with the ones inside `bookkeeper_gen_ext.h` for consistency.
@@ -59,9 +59,9 @@ typedef struct {
     bool derive_all;
     char* input_path;
     char* out_path;
-} BkState;
+} BkConfig;
 
-static BkState bk = {0};
+static BkConfig bk = {0};
 static char tmp_str[4096];
 #define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
 #define fmt(...) strdup(tfmt(__VA_ARGS__))
@@ -232,26 +232,26 @@ typedef struct {
     char* flag;
     char* usage;
     char* desc;
-    bool (*exec_c)(BkState* bk, int* i, int argc, char** argv);
+    bool (*exec_c)(int* i, int argc, char** argv);
 } Command;
 
 // If only we had closures in C...
-bool help_cmd(BkState* bk, int* i, int argc, char** argv);
-bool search_directory_cmd(BkState* bk, int* i, int argc, char** argv);
-bool output_directory_cmd(BkState* bk, int* i, int argc, char** argv);
-bool silent_cmd(BkState* bk, int* i, int argc, char** argv);
-bool derive_all_cmd(BkState* bk, int* i, int argc, char** argv);
-bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv);
-bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv);
-bool gen_impl_cmd(BkState* bk, int* i, int argc, char** argv);
-bool gen_fmt_dst_cmd(BkState* bk, int* i, int argc, char** argv);
-bool gen_fmt_cmd(BkState* bk, int* i, int argc, char** argv);
-bool set_disable_dump_cmd(BkState* bk, int* i, int argc, char** argv);
-bool set_disable_parse_cmd(BkState* bk, int* i, int argc, char** argv);
-bool offset_type_cmd(BkState* bk, int* i, int argc, char** argv);
+bool help_cmd(int* i, int argc, char** argv);
+bool search_directory_cmd(int* i, int argc, char** argv);
+bool output_directory_cmd(int* i, int argc, char** argv);
+bool silent_cmd(int* i, int argc, char** argv);
+bool derive_all_cmd(int* i, int argc, char** argv);
+bool disable_dump_cmd(int* i, int argc, char** argv);
+bool disable_parse_cmd(int* i, int argc, char** argv);
+bool gen_impl_cmd(int* i, int argc, char** argv);
+bool gen_fmt_dst_cmd(int* i, int argc, char** argv);
+bool gen_fmt_cmd(int* i, int argc, char** argv);
+bool set_disable_dump_cmd(int* i, int argc, char** argv);
+bool set_disable_parse_cmd(int* i, int argc, char** argv);
+bool offset_type_cmd(int* i, int argc, char** argv);
 
 #define exec_cmd(cmd)\
-((cmd)->exec_c ? ((cmd)->exec_c(&bk, &i, argc, argv) ? true : (printf("Usage of '%s': %s\n", (cmd)->name, (cmd)->usage), false)) : false)
+((cmd)->exec_c ? ((cmd)->exec_c(&i, argc, argv) ? true : (bk_printf("Usage of '%s': %s\n", (cmd)->name, (cmd)->usage), false)) : false)
 
 static Command commands[] = {
     {
@@ -367,12 +367,20 @@ static Command commands[] = {
         .exec_c = offset_type_cmd
     },
 };
-const size_t commands_count = sizeof commands / sizeof *commands;
+const static size_t commands_count = sizeof commands / sizeof *commands;
 
+#define bk_printf(...) (bk.silent ? 0 : printf(__VA_ARGS__))
+
+#ifdef BK_RENAME_MAIN
+#define __BK_DEFINE_FN(name) int name(int argc, char** argv)
+__BK_DEFINE_FN(BK_RENAME_MAIN) {
+#undef __BK_DEFINE_FN
+#else
 int main(int argc, char** argv) {
+#endif // BK_RENAME_MAIN
     if (argc <= 1) {
-        printf("Basic usage: %s -d <search-directory> -od <output-directory>\n", argv[0]);
-        printf("Use `-h` to print all available commands, `-h <command-name>` to see that command's usage.\n");
+        bk_printf("Basic usage: %s -d <search-directory> -od <output-directory>\n", argv[0]);
+        bk_printf("Use `-h` to print all available commands, `-h <command-name>` to see that command's usage.\n");
         return 0;
     }
     
@@ -411,6 +419,10 @@ int main(int argc, char** argv) {
     bk.derive_all = false;
     bk.input_path = NULL;
     bk.out_path = NULL;
+
+    #ifdef DEBUG
+    bk.silent = true;
+    #endif // DEBUG
 
     // NOTE: Assumes that `argv` lives long enough
     for (int i = 1; i < argc; ++i) {
@@ -582,25 +594,6 @@ unsigned long djb2(const char* s) {
     unsigned long hash = 5381;
     for (char c; (c = *s++);) hash = ((hash << 5) + hash) + (unsigned long) c;
     return hash;
-}
-
-
-char* extract_positional_impl(int* i, int argc, char** argv, char* flag_name, ...) {
-    *i = *i + 1;
-    if (*i < argc) {
-        return argv[*i];
-    }
-    printf("Flag '%s' requires argument(s):", flag_name);
-    va_list args;
-    va_start(args, flag_name);
-    
-    for(char* arg = va_arg(args, char*); arg != NULL; arg = va_arg(args, char*)) {
-        printf(" <%s>", arg);
-    }
-    printf("\n");
-
-    va_end(args);
-    return NULL;
 }
 
 bool va_get_expect_ids(stb_lexer* lex, va_list args) {
@@ -1034,7 +1027,7 @@ void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, 
     print_string(book_buf, "}\n");
 }
 
-bool help_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool help_cmd(int* i, int argc, char** argv) {
     (void)bk;
 
     if ((*i + 1) < argc) {
@@ -1045,114 +1038,116 @@ bool help_cmd(BkState* bk, int* i, int argc, char** argv) {
             for (size_t j = 0; j < commands_count; ++j) {
                 if (strcmp(arg, commands[j].name) == 0) {
                     found = true;
-                    printf("%s:\n    Usage: %s\n    Description: %s\n\n", commands[j].name, commands[j].usage, commands[j].desc);
+                    bk_printf("%s:\n    Usage: %s\n    Description: %s\n\n", commands[j].name, commands[j].usage, commands[j].desc);
                     break;
                 }
             }
             return found;
         }
     }
-    printf("[help start]\n\n");
+    bk_printf("[help start]\n\n");
     for (size_t j = 0; j < commands_count; ++j) {
-        printf("%s: %s\n\n", commands[j].name, commands[j].desc);
+        bk_printf("%s: %s\n\n", commands[j].name, commands[j].desc);
     }
-    printf("[help end]\n\n");
+    bk_printf("[help end]\n\n");
 
     return true;    
 }
 
-bool search_directory_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool search_directory_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->input_path = argv[*i];
+        bk.input_path = argv[*i];
         return true;
     }
     return false;
 }
 
-bool output_directory_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool output_directory_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->out_path = argv[*i];
+        bk.out_path = argv[*i];
         return true;
     }
     return false;
 }
 
-bool silent_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool silent_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk->silent = true;
+    bk.silent = true;
     return true;
 }
 
-bool derive_all_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool derive_all_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk->derive_all = true;
+    bk.derive_all = true;
     return true;
 }
 
-bool gen_impl_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool gen_impl_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->gen_implementation_macro = argv[*i];
+        bk.gen_implementation_macro = argv[*i];
         return true;
     }
     return false;
 }
 
-bool gen_fmt_dst_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool gen_fmt_dst_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->gen_fmt_dst_macro = argv[*i];
+        bk.gen_fmt_dst_macro = argv[*i];
         return true;
     }
     return false;
 }
 
-bool gen_fmt_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool gen_fmt_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->gen_fmt_macro = argv[*i];
+        bk.gen_fmt_macro = argv[*i];
         return true;
     }
     return false;
 }
 
-bool set_disable_dump_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool set_disable_dump_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->disable_dump_macro = argv[*i];
+        bk.disable_dump_macro = argv[*i];
         return true;
     }
     return false;
 }
 
-bool set_disable_parse_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool set_disable_parse_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->disable_parse_macro = argv[*i];
+        bk.disable_parse_macro = argv[*i];
         return true;
     }
     return false;
 }
 
-bool offset_type_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool offset_type_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk->offset_type_macro = argv[*i];
+        bk.offset_type_macro = argv[*i];
         return true;
     }
     return false;
 }
 
-bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool disable_dump_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk->disable_dump = true;
+    bk.disable_dump = true;
     return true;
 }
 
-bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool disable_parse_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk->disable_parse = true;
+    bk.disable_parse = true;
     return true;
 }
+
+#endif // __BOOKKEEPER_GEN_C__

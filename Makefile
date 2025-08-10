@@ -8,7 +8,7 @@ FLAGS_LIST = $(subst $(space),$(comma),$(CFLAGS))
 a := $(file > .clangd, CompileFlags:)
 b := $(file >> .clangd, 	Add: [$(FLAGS_LIST)])
 
-.PHONY: default clean dump gen parse bk
+.PHONY: default clean dump gen parse bk all
 
 default: build/bookkeeper_gen
 
@@ -24,6 +24,8 @@ dump: ./build/dump_people
 parse: ./build/parse_people
 
 schema_ext: ./build/bookkeeper_gen_ext
+
+all: dump parse schema_ext
 
 build/bookkeeper_gen: bookkeeper_gen.c ./thirdparty/stb_c_lexer.h
 	clang $(CFLAGS) bookkeeper_gen.c -o ./build/bookkeeper_gen
