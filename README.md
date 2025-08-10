@@ -34,6 +34,10 @@ int parse_$schema$_$type$(char* src, unsigned long len, $type$* dst) {
 Dump functions use a macro named `BK_FMT` defined inside the `*.bk.h` files to output into the provided `dst` buffer. The type of this `dst` argument for the 'dump' family of functions depends on the `BK_FMT_DST_t` macro that you should redefine if your `BK_FMT` implementation expects a different type from the default one. The default implementation uses `fprintf` and expects `dst` to be `FILE*` but it can be redefined inside your code before including your `*.bk.h` file.
 (See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
 
+Functions generated for a specific type can be disabled by defining the `BK_DISABLE_$type$` macro in your code.
+
+The names of the special generated macroes mentioned above (like `BK_FMT`) can all be customized via command line arguments supplied to `bookkeeper_gen`. Try `bookkeeper_gen -h` for a list of all available flags.
+
 # Using `bookkeeper` In Your Project
 You _can_ just tell people to put the `bookkeeper_gen` executable in their `PATH` while compiling your project but it is probably better to just include the source code of `bookkeeper_gen` in your project and build it during your build process. This is pretty easy since the entire source code of the tool is inside [`bookkeeper_gen.c`](https://github.com/serd223/bookkeeper/blob/master/bookkeeper_gen.c) (This source file also includes its license inside so you don't have to worry about that). The only caveat with this approach is that you also have to include [`stb_c_lexer`](https://github.com/nothings/stb/blob/master/stb_c_lexer.h) in your project but that is a pretty lightweight single file dependency, as well.
 
@@ -75,7 +79,7 @@ In order to add an extension to `bookkeeper`, you will need to wrap the `bookkee
 In order to test the provided extension example, you can run:
 ```console
     $ make schema_ext
-    $ ./build/bookkeeper_gen_ext ./examples ./gen
+    $ ./build/bookkeeper_gen_ext -d ./examples -od ./gen
 ```
 You can then inspect the generated files inside the `gen` folder to see the generated example schema functions.
 
