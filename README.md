@@ -63,7 +63,7 @@ In order to add an extension to `bookkeeper`, you will need to wrap the `bookkee
     void gen_example_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) { /* impl */ }
     void gen_example_parse_impl(String* book_buf, CCompound* ty) { /* impl */ }
 
-    #define BK_GEN_EXT(...)\
+    #define BK_ADD_SCHEMAS(s)\
     Schema example = {\
         .gen_dump_decl = gen_example_dump_decl,\
         .gen_parse_decl = gen_example_parse_decl,\
@@ -71,7 +71,7 @@ In order to add an extension to `bookkeeper`, you will need to wrap the `bookkee
         .gen_parse_impl = gen_example_parse_impl,\
         .derive_attr = "derive_example"\
     };\
-    push_da(&schemas, example);
+    push_da(&s, example);
     // This file should be able to find `stb_c_lexer.h` since it is included by `bookkeeper_gen.c`
     #include "bookkeeper_gen.c"
 ```
