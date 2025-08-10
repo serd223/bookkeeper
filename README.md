@@ -1,6 +1,7 @@
 # Quick Start
 To see `bookkeeper` in action, you can build the [`dump_people`](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c) example:
 ```console
+    $ mkdir build && mkdir gen
     $ make dump
     $ ./build/dump_people
 ```
