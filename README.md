@@ -6,7 +6,7 @@ To see `bookkeeper` in action, you can build the [`dump_people`](https://github.
 ```
 
 # Table of Contents
-  * [Overview](https://github.com/serd223/bookkeeper?tab=readme-ov-file#using-bookkeeper-in-your-project)
+  * [Overview](https://github.com/serd223/bookkeeper?tab=readme-ov-file#overview)
   * [Using `bookkeeper` in your project](https://github.com/serd223/bookkeeper?tab=readme-ov-file#using-bookkeeper-in-your-project)
   * [Configuration](https://github.com/serd223/bookkeeper?tab=readme-ov-file#configuration)
   * [Schema Extensions](https://github.com/serd223/bookkeeper?tab=readme-ov-file#schema-extensions)
