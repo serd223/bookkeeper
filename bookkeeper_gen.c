@@ -251,6 +251,7 @@ typedef struct {
 
 // If only we had closures in C...
 bool help_cmd(int* i, int argc, char** argv);
+bool config_path_cmd(int* i, int argc, char** argv);
 bool search_directory_cmd(int* i, int argc, char** argv);
 bool output_directory_cmd(int* i, int argc, char** argv);
 bool silent_cmd(int* i, int argc, char** argv);
@@ -274,6 +275,13 @@ static Command commands[] = {
         .usage = "-h <command (optional)>",
         .desc = "Prints a list of all commands or information about the provided command",
         .exec_c = help_cmd
+    },
+    {
+        .name = "config-path",
+        .flag = "--config-path",
+        .usage = "--config-path <file>",
+        .desc = "Changes the path that will be used to load the configuration file (default value is './bk.conf')",
+        .exec_c = config_path_cmd
     },
     // {
     //     .name = "search-file",
@@ -385,6 +393,8 @@ const static size_t commands_count = sizeof commands / sizeof *commands;
 
 #define bk_printf(...) (bk.silent ? 0 : printf(__VA_ARGS__))
 
+static char* config_path = "./.bk.conf";
+
 #ifdef BK_RENAME_MAIN
 #define __BK_DEFINE_FN(name) int name(int argc, char** argv)
 __BK_DEFINE_FN(BK_RENAME_MAIN) {
@@ -444,16 +454,37 @@ int main(int argc, char** argv) {
     bk.silent = true;
     #endif // DEBUG
 
+    int config_cmd_index = -1;
+    for (size_t i = 0; i < commands_count; ++i) {
+        if (strcmp(commands[i].name, "config-path") == 0) {
+            config_cmd_index = (int)i;
+        }
+    }
+    if (config_cmd_index < 0) abort();
+
+    bool custom_config = false;
+    // NOTE: Assumes that `argv` lives long enough
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(commands[config_cmd_index].flag, argv[i]) == 0) {
+            if (!exec_cmd(&commands[config_cmd_index])) return 1;
+            custom_config = true;
+            break;
+        }
+    }
+
     bool found_config = false;
     {
-        FILE* conf_file = fopen("./.bk.conf", "rb");
+        FILE* conf_file = fopen(config_path, "rb");
         if (conf_file) {
             fclose(conf_file);
             String conf_contents = {0};
-            if (read_entire_file("./.bk.conf", &conf_contents)) {
+            if (read_entire_file(config_path, &conf_contents)) {
                 found_config = true;
                 parse_bkconf_BkConfig(conf_contents.items, conf_contents.len, &bk);
             }
+        } else if (custom_config) {
+            bk_log(LOG_ERROR, "Couldn't open file '%s': %s\n", config_path, strerror(errno));
+            return 1;
         }
     }
 
@@ -1167,6 +1198,15 @@ bool help_cmd(int* i, int argc, char** argv) {
     bk_printf("[help end]\n\n");
 
     return true;    
+}
+
+
+bool config_path_cmd(int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        config_path = argv[*i];
+        return true;
+    }
+    return false;
 }
 
 bool search_directory_cmd(int* i, int argc, char** argv) {

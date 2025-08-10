@@ -16,8 +16,8 @@ bk: ./build/bookkeeper_gen
 
 debug: ./build/bookkeeper_gen_debug
 
-gen: ./build/bookkeeper_gen ./examples/people.h ./examples/dump_people.c
-	./build/bookkeeper_gen -d ./examples/  -od ./gen/
+gen: ./build/bookkeeper_gen ./examples/people.h ./examples/dump_people.c ./examples/.bk.conf
+	./build/bookkeeper_gen --config-path ./examples/.bk.conf
 
 dump: ./build/dump_people
 
