@@ -29,25 +29,43 @@ DEALINGS IN THE SOFTWARE.
 #define __BK_GEN_EXT_DEFINITIONS
 
 #include <stddef.h>
+#include <stdbool.h>
 
+typedef struct {
+    bool silent;
+    char* gen_fmt_macro;
+    char* gen_implementation_macro;
+    char* gen_fmt_dst_macro;
+    char* disable_dump_macro;
+    char* disable_parse_macro;
+    char* offset_type_macro;
+    char* type_disable_macro_prefix;
+    bool derive_all;
+    char* input_path;
+    char* out_path;
+} BkState;
+
+static BkState bk = {0};
 static char tmp_str[4096];
 #define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
 #define fmt(...) strdup(tfmt(__VA_ARGS__))
 
 #define bk_log_loc(level, source, line, ...) do {\
-    switch (level) {\
-    case LOG_INFO: {\
-        fprintf(stderr, "%s:%d: [INFO] ", source, line);\
-    } break;\
-    case LOG_WARN: {\
-        fprintf(stderr, "%s:%d: [WARN] ", source, line);\
-    } break;\
-    case LOG_ERROR: {\
-        fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
-    } break;\
-    default: abort();\
+    if (!bk.silent) {\
+        switch (level) {\
+        case LOG_INFO: {\
+            fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+        } break;\
+        case LOG_WARN: {\
+            fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+        } break;\
+        case LOG_ERROR: {\
+            fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+        } break;\
+        default: abort();\
+        }\
+        fprintf(stderr, __VA_ARGS__);\
     }\
-    fprintf(stderr, __VA_ARGS__);\
 } while(0)
 
 #define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
@@ -115,7 +133,7 @@ typedef struct {
     size_t cap;
 } CCompounds;
 
-#define push_da(arr, item)                                                          \
+#define push_da(arr, item) do {                                                     \
     if ((arr)->len + 1 >= (arr)->cap) {                                             \
         if ((arr)->cap > 0) {                                                       \
             (arr)->cap = (arr)->cap * 2;                                            \
@@ -128,7 +146,8 @@ typedef struct {
             (arr)->items = malloc((arr)->cap * sizeof *(arr)->items);               \
         }                                                                           \
     }                                                                               \
-    (arr)->items[(arr)->len++] = (item);
+    (arr)->items[(arr)->len++] = (item);                                            \
+} while(0)
 
 #define print_string(str, ...) do {                                                 \
     int len = sprintf(tmp_str, __VA_ARGS__);                                        \

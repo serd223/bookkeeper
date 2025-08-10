@@ -45,24 +45,41 @@ DEALINGS IN THE SOFTWARE.
 // You should only put definitions inside the scope of this guard if that definition needs to
 // be accessible inside extensions.
 #ifndef __BK_GEN_EXT_DEFINITIONS
+typedef struct {
+    bool silent;
+    char* gen_fmt_macro;
+    char* gen_implementation_macro;
+    char* gen_fmt_dst_macro;
+    char* disable_dump_macro;
+    char* disable_parse_macro;
+    char* offset_type_macro;
+    char* type_disable_macro_prefix;
+    bool derive_all;
+    char* input_path;
+    char* out_path;
+} BkState;
+
+static BkState bk = {0};
 static char tmp_str[4096];
 #define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
 #define fmt(...) strdup(tfmt(__VA_ARGS__))
 
 #define bk_log_loc(level, source, line, ...) do {\
-    switch (level) {\
-    case LOG_INFO: {\
-        fprintf(stderr, "%s:%d: [INFO] ", source, line);\
-    } break;\
-    case LOG_WARN: {\
-        fprintf(stderr, "%s:%d: [WARN] ", source, line);\
-    } break;\
-    case LOG_ERROR: {\
-        fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
-    } break;\
-    default: abort();\
+    if (!bk.silent) {\
+        switch (level) {\
+        case LOG_INFO: {\
+            fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+        } break;\
+        case LOG_WARN: {\
+            fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+        } break;\
+        case LOG_ERROR: {\
+            fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+        } break;\
+        default: abort();\
+        }\
+        fprintf(stderr, __VA_ARGS__);\
     }\
-    fprintf(stderr, __VA_ARGS__);\
 } while(0)
 
 #define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
@@ -192,10 +209,10 @@ bool get_expect_ids(stb_lexer* lex,...);
 void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all);
 
 // Code generation
-size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type);
-size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty);
-void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
-void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty);
+size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* disable_dump_macro);
+size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro);
+void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro, const char* disable_dump_macro);
+void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro);
 
 // JSON generation
 size_t gen_json_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
@@ -207,10 +224,140 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty);
 size_t gen_debug_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
 void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
 
-#define BK_GEN_IMPLEMENTATION_MACRO "BK_IMPLEMENTATION"
-#define BK_GEN_FMT_DST_MACRO "BK_FMT_DST_t"
+// Command line arguments
+typedef struct {
+    char* name;
+    char* flag;
+    char* usage;
+    char* desc;
+    bool (*exec_c)(BkState* bk, int* i, int argc, char** argv);
+} Command;
+
+// If only we had closures in C...
+bool help_cmd(BkState* bk, int* i, int argc, char** argv);
+bool search_directory_cmd(BkState* bk, int* i, int argc, char** argv);
+bool output_directory_cmd(BkState* bk, int* i, int argc, char** argv);
+bool silent_cmd(BkState* bk, int* i, int argc, char** argv);
+bool derive_all_cmd(BkState* bk, int* i, int argc, char** argv);
+bool gen_impl_cmd(BkState* bk, int* i, int argc, char** argv);
+bool gen_fmt_dst_cmd(BkState* bk, int* i, int argc, char** argv);
+bool gen_fmt_cmd(BkState* bk, int* i, int argc, char** argv);
+bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv);
+bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv);
+bool offset_type_cmd(BkState* bk, int* i, int argc, char** argv);
+
+#define exec_cmd(cmd)\
+((cmd)->exec_c ? ((cmd)->exec_c(&bk, &i, argc, argv) ? true : (printf("Usage of '%s': %s\n", (cmd)->name, (cmd)->usage), false)) : false)
+
+static Command commands[] = {
+    {
+        .name = "help",
+        .flag = "-h",
+        .usage = "-h <command (optional)>",
+        .desc = "Prints a list of all commands or information about the provided command",
+        .exec_c = help_cmd
+    },
+    // {
+    //     .name = "search-file",
+    //     .flag = "-f",
+    //     .usage = "-f <file>",
+    //     .desc = "TODO",
+    //     .exec_c = NULL // TODO: search-file
+    // },
+    {
+        .name = "search-directory",
+        .flag = "-d",
+        .usage = "-d <dir>",
+        .desc = "The provided directory will be searched for '.c' or '.h' files to analyze",
+        .exec_c = search_directory_cmd
+    },
+    // {
+    //     .name = "output-file",
+    //     .flag = "-of",
+    //     .usage = "-of <file>",
+    //     .desc = "TODO",
+    //     .exec_c = NULL // TODO: output-file
+    // },
+    {
+        .name = "output-directory",
+        .flag = "-od",
+        .usage = "-od <dir>",
+        .desc = "All generated files will be placed inside the provided directory",
+        .exec_c = output_directory_cmd
+    },
+    {
+        .name = "silent",
+        .flag = "--silent",
+        .usage = "--silent",
+        .desc = "Turns off logging",
+        .exec_c = silent_cmd
+    },
+    {
+        .name = "derive-all",
+        .flag = "--derive-all",
+        .usage = "--derive-all",
+        .desc = "Derives all possible schemas for all analyzed structs",
+        .exec_c = derive_all_cmd
+    },
+    {
+        .name = "gen-implementation",
+        .flag = "--gen-implementation",
+        .usage = "--gen-implementation <name>",
+        .desc = "Sets the macro that will be used in the generated code to control enabling implementation",
+        .exec_c = gen_impl_cmd
+    },
+    {
+        .name = "gen-fmt-dst",
+        .flag = "--gen-fmt-dst",
+        .usage = "--gen-fmt-dst <name>",
+        .desc = "Sets the macro that will be used in the generated code to control the type of `dst` in `dump` functions",
+        .exec_c = gen_fmt_dst_cmd
+    },
+    {
+        .name = "gen-fmt",
+        .flag = "--gen-fmt",
+        .usage = "--gen-fmt <name>",
+        .desc = "Sets the macro that will be used in the generated `dump` functions to output with `printf` style arguments",
+        .exec_c = gen_fmt_cmd
+    },
+    {
+        .name = "disable-dump",
+        .flag = "--disable-dump",
+        .usage = "--disable-dump <name>",
+        .desc = "Sets the macro that will be used in the generated code to disable `dump` functions",
+        .exec_c = disable_dump_cmd
+    },
+    {
+        .name = "disable-parse",
+        .flag = "--disable-parse",
+        .usage = "--disable-parse <name>",
+        .desc = "Sets the macro that will be used in the generated code to disable `parse` functions",
+        .exec_c = disable_parse_cmd
+    },
+    {
+        .name = "offset-type",
+        .flag = "--offset-type",
+        .usage = "--offset-type <name>",
+        .desc = "Sets the macro that will be used in the generated code to control the type of the `offset` variable inside `dump` functions",
+        .exec_c = offset_type_cmd
+    },
+    {
+        .name = "disable-type-prefix",
+        .flag = "--disable-type-prefix",
+        .usage = "--disable-type-prefix <name>",
+        .desc = "Sets the prefix of the generated macro that can be used to disable generated code for a specific user type (<prefix><typename>)",
+        .exec_c = offset_type_cmd
+    },
+};
+const size_t commands_count = sizeof commands / sizeof *commands;
 
 int main(int argc, char** argv) {
+    if (argc <= 1) {
+        printf("Basic usage: %s -d <search-directory> -od <output-directory>\n", argv[0]);
+        printf("Use `-h` to print all available commands, `-h <command-name>` to see that command's usage.\n");
+        return 0;
+    }
+    
     Schemas schemas = {0};
     Schema json = {
         .gen_dump_decl = gen_json_dump_decl, 
@@ -230,25 +377,52 @@ int main(int argc, char** argv) {
     push_da(&schemas, debug);
 
     // Do whatever you want here
-    #ifdef BK_GEN_EXT
+    #ifdef BK_ADD_SCHEMAS
     do {
-        BK_GEN_EXT()
+        BK_ADD_SCHEMAS(schemas)
     } while (0);
     #endif
+    bk.gen_fmt_macro = "BK_FMT";
+    bk.gen_implementation_macro = "BK_IMPLEMENTATION";
+    bk.gen_fmt_dst_macro = "BK_FMT_DST_t";
+    bk.disable_dump_macro = "DISABLE_DUMP";
+    bk.disable_parse_macro = "DISABLE_PARSE";
+    bk.offset_type_macro = "BK_OFFSET_t";
+    bk.type_disable_macro_prefix = "BK_DISABLE_";
+
+    bk.derive_all = false;
+    bk.input_path = NULL;
+    bk.out_path = NULL;
+
+    // NOTE: Assumes that `argv` lives long enough
+    for (int i = 1; i < argc; ++i) {
+        for (size_t j = 0; j < commands_count; ++j) {
+            if (strcmp(commands[j].flag, argv[i]) == 0) {
+                if (!exec_cmd(&commands[j])) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    if (!bk.input_path) {
+        bk_log(LOG_WARN, "No search path set, exiting...\n");
+        return 1;
+    }
+    if (!bk.out_path) {
+        bk_log(LOG_WARN, "No output path set, exiting...\n");
+        return 1;
+    }
+    
+    {
+        size_t in_len = strlen(bk.input_path);
+        if (bk.input_path[in_len - 1] == '/') bk.input_path[in_len - 1] = 0;
+        size_t out_len = strlen(bk.out_path);
+        if (bk.out_path[out_len - 1] == '/') bk.out_path[out_len - 1] = 0;
+    }
+
 
     bk_log(LOG_INFO, "Number of registered schemas: %lu\n", schemas.len);
-
-    const char* gen_fmt_macro = "BK_FMT";
-    bool derive_all = false;
-    char* input_path;
-    char* out_path;
-    if (argc < 3) {
-        printf("Usage: %s [search directory] [output directory]\n", argv[0]);
-        return 1;
-    } else {
-        input_path = argv[1];
-        out_path = argv[2];
-    }
 
     String book_buf = {0};
     print_string(&book_buf, "#ifndef __DERIVES_H__\n");
@@ -258,20 +432,24 @@ int main(int argc, char** argv) {
         print_string(&book_buf, "#define %s(...)\n", schemas.items[i].derive_attr);
     }
     print_string(&book_buf, "#endif // __DERIVES_H__\n");
-    write_entire_file(tfmt("%s/derives.h", out_path), &book_buf);
+    write_entire_file(tfmt("%s/derives.h", bk.out_path), &book_buf);
 
     CCompounds types = {0}; // leaks (static data)
     String file_buf = {0}; // leaks (static data)
     book_buf.len = 0;
-    DIR* input_dir = opendir(input_path);
+    DIR* input_dir = opendir(bk.input_path); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
     size_t file_idx = 0;
+    if (!input_dir) {
+        bk_log(LOG_ERROR, "Couldn't open directory '%s': %s\n", bk.input_path, strerror(errno));
+        return 1;
+    }
     for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
         if (ent->d_type == DT_REG) {
             if (
                 strcmp(ent->d_name + strlen(ent->d_name) - 2, ".c") == 0 ||
                 strcmp(ent->d_name + strlen(ent->d_name) - 2, ".h") == 0
             ) {
-                char* in_file = fmt("%s/%s", input_path, ent->d_name);
+                char* in_file = fmt("%s/%s", bk.input_path, ent->d_name);
                 unsigned long in_hash = djb2(in_file);
 
                 bk_log(LOG_INFO, "Analyzing file: %s\n", ent->d_name);
@@ -279,34 +457,41 @@ int main(int argc, char** argv) {
                 if (!read_entire_file(in_file, &file_buf)) continue;
 
                 types.len = 0;
-                analyze_file(schemas, file_buf, &types, derive_all);
+                analyze_file(schemas, file_buf, &types, bk.derive_all);
                 bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
                 book_buf.len = 0;
                 if (types.len > 0) {
                     print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file);
                     print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                    print_string(&book_buf, "#ifndef %s\n", BK_GEN_FMT_DST_MACRO);
-                    print_string(&book_buf, "#define %s FILE*\n", BK_GEN_FMT_DST_MACRO);
-                    print_string(&book_buf, "#endif // %s\n", BK_GEN_FMT_DST_MACRO);
-                    print_string(&book_buf, "#ifndef %s\n", gen_fmt_macro);
-                    print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", gen_fmt_macro);
-                    print_string(&book_buf, "#endif // %s\n", gen_fmt_macro);
-                    print_string(&book_buf, "#ifndef BK_OFFSET_t\n");
-                    print_string(&book_buf, "#define BK_OFFSET_t size_t\n");
-                    print_string(&book_buf, "#endif // BK_OFFSET_t\n");
+                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#define %s FILE*\n", bk.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_macro);
+                    print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", bk.gen_fmt_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_macro);
+                    print_string(&book_buf, "#ifndef %s\n", bk.offset_type_macro);
+                    print_string(&book_buf, "#define %s size_t\n", bk.offset_type_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.offset_type_macro);
                     size_t num_decls = 0;
                     for (size_t i = 0; i < types.len; ++i) {
-                        num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, BK_GEN_FMT_DST_MACRO);
-                        num_decls += gen_parse_decl(schemas, &book_buf, types.items + i);
+                        print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                        num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
+                        num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                        print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
                     }
                     if (num_decls > 0) {
+                        print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
                         for (size_t i = 0; i < types.len; ++i) {
-                            gen_dump_impl(schemas, &book_buf, types.items + i, BK_GEN_FMT_DST_MACRO, gen_fmt_macro);
-                            gen_parse_impl(schemas, &book_buf, types.items + i);
+                            print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                            gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
+                            gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                            print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
                         }
+                        print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
+
                         push_da(&book_buf, '\n');
                         print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                        char* out_file = tfmt("%s/%.*s.bk.h", out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
+                        char* out_file = tfmt("%s/%.*s.bk.h", bk.out_path, (int)strlen(ent->d_name) - 2, ent->d_name); 
                         write_entire_file(out_file, &book_buf);
                         file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
                     }
@@ -371,6 +556,25 @@ unsigned long djb2(const char* s) {
     unsigned long hash = 5381;
     for (char c; (c = *s++);) hash = ((hash << 5) + hash) + (unsigned long) c;
     return hash;
+}
+
+
+char* extract_positional_impl(int* i, int argc, char** argv, char* flag_name, ...) {
+    *i = *i + 1;
+    if (*i < argc) {
+        return argv[*i];
+    }
+    printf("Flag '%s' requires argument(s):", flag_name);
+    va_list args;
+    va_start(args, flag_name);
+    
+    for(char* arg = va_arg(args, char*); arg != NULL; arg = va_arg(args, char*)) {
+        printf(" <%s>", arg);
+    }
+    printf("\n");
+
+    va_end(args);
+    return NULL;
 }
 
 bool va_get_expect_ids(stb_lexer* lex, va_list args) {
@@ -562,56 +766,56 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
     }
 }
 
-size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type) {
+size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* disable_dump_macro) {
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
-    print_string(book_buf, "\n#ifndef DISABLE_DUMP\n");
+    print_string(book_buf, "\n#ifndef %s\n", disable_dump_macro);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_dump_decl != NULL) count += schema->gen_dump_decl(book_buf, ty, dst_type);
         }
     }
-    print_string(book_buf, "#endif // DISABLE_DUMP\n");
+    print_string(book_buf, "#endif // %s\n", disable_dump_macro);
     return count;
 }
 
-size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty) {
+size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro) {
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
-    print_string(book_buf, "\n#ifndef DISABLE_PARSE\n");
+    print_string(book_buf, "\n#ifndef %s\n", disable_parse_macro);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_parse_decl != NULL) count += schema->gen_parse_decl(book_buf, ty);
         }
     }
-    print_string(book_buf, "#endif // DISABLE_PARSE\n");
+    print_string(book_buf, "#endif // %s\n", disable_parse_macro);
     return count;
 }
 
-void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
+void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro, const char* disable_dump_macro) {
     if (ty->derived_schemas == 0) return;
-    print_string(book_buf, "\n#ifdef "BK_GEN_IMPLEMENTATION_MACRO"\n#ifndef DISABLE_DUMP\n");
+    print_string(book_buf, "\n#ifndef %s\n", disable_dump_macro);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_dump_impl != NULL) schema->gen_dump_impl(book_buf, ty, dst_type, fmt_macro);
         }
     }
-    print_string(book_buf, "#endif // DISABLE_DUMP\n#endif // "BK_GEN_IMPLEMENTATION_MACRO"\n");
+    print_string(book_buf, "\n#endif // %s\n", disable_dump_macro);
 }
 
-void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty) {
+void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro) {
     if (ty->derived_schemas == 0) return;
-    print_string(book_buf, "\n#ifdef "BK_GEN_IMPLEMENTATION_MACRO"\n#ifndef DISABLE_PARSE\n");
+    print_string(book_buf, "\n#ifndef %s\n", disable_parse_macro);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_parse_impl != NULL) schema->gen_parse_impl(book_buf, ty);
         }
     }
-    print_string(book_buf, "#endif // DISABLE_PARSE\n#endif // "BK_GEN_IMPLEMENTATION_MACRO"\n");
+    print_string(book_buf, "\n#endif // %s\n", disable_parse_macro);
 }
 
 // JSON generation
@@ -755,7 +959,7 @@ size_t gen_debug_dump_decl(String* book_buf, CCompound* ty, const char* dst_type
 void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
     print_string(book_buf, "void __indent_dump_debug_%s(%s* item, %s dst, int indent) {\n", ty->name, ty->name, dst_type);
     print_string(book_buf, "    BK_OFFSET_t offset = {0};\n");
-    print_string(book_buf, "    %s(\"%%*s%s {\\n\", indent, \"\");\n", fmt_macro, ty->name);
+    print_string(book_buf, "    %s(\"%s {\\n\");\n", fmt_macro, ty->name);
     for (size_t j = 0; j < ty->fields.len; ++j) {
         Field* f = ty->fields.items + j;
         switch (f->type.kind) {
@@ -790,9 +994,8 @@ void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, 
             }
         } break;
         case CEXTERNAL: {
-            print_string(book_buf, "    %s(\"%%*s%s: {\\n\", indent + 4, \"\");\n", fmt_macro, f->name);
-            print_string(book_buf, "    __indent_dump_debug_%s(&item->%s, dst, indent + 8);\n", f->type.name, f->name);
-            print_string(book_buf, "    %s(\"%%*s}\\n\", indent + 4, \"\");\n", fmt_macro);
+            print_string(book_buf, "    %s(\"%%*s%s: \", indent + 4, \"\");\n", fmt_macro, f->name);
+            print_string(book_buf, "    __indent_dump_debug_%s(&item->%s, dst, indent + 4);\n", f->type.name, f->name);
         } break;
         default: abort();
         }
@@ -803,4 +1006,111 @@ void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, 
     print_string(book_buf, "void dump_debug_%s(%s* item, %s dst) {\n", ty->name, ty->name, dst_type);
     print_string(book_buf, "    __indent_dump_debug_%s(item, dst, 0);\n", ty->name);
     print_string(book_buf, "}\n");
+}
+
+bool help_cmd(BkState* bk, int* i, int argc, char** argv) {
+    (void)bk;
+
+    if ((*i + 1) < argc) {
+        char* arg = argv[*i + 1];
+        if (strlen(arg) < 1) return false;
+        if (arg[0] != '-') {
+            bool found = false;
+            for (size_t j = 0; j < commands_count; ++j) {
+                if (strcmp(arg, commands[j].name) == 0) {
+                    found = true;
+                    printf("%s:\n    Usage: %s\n    Description: %s\n\n", commands[j].name, commands[j].usage, commands[j].desc);
+                    break;
+                }
+            }
+            return found;
+        }
+    }
+    printf("[help start]\n\n");
+    for (size_t j = 0; j < commands_count; ++j) {
+        printf("%s: %s\n\n", commands[j].name, commands[j].desc);
+    }
+    printf("[help end]\n\n");
+
+    return true;    
+}
+
+bool search_directory_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->input_path = argv[*i];
+        return true;
+    }
+    return false;
+}
+
+bool output_directory_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->out_path = argv[*i];
+        return true;
+    }
+    return false;
+}
+
+bool silent_cmd(BkState* bk, int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    bk->silent = true;
+    return true;
+}
+
+bool derive_all_cmd(BkState* bk, int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    bk->derive_all = true;
+    return true;
+}
+
+bool gen_impl_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->gen_implementation_macro = argv[*i];
+        return true;
+    }
+    return false;
+}
+
+bool gen_fmt_dst_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->gen_fmt_dst_macro = argv[*i];
+        return true;
+    }
+    return false;
+}
+
+bool gen_fmt_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->gen_fmt_macro = argv[*i];
+        return true;
+    }
+    return false;
+}
+
+bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->disable_dump_macro = argv[*i];
+        return true;
+    }
+    return false;
+}
+
+bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->disable_parse_macro = argv[*i];
+        return true;
+    }
+    return false;
+}
+
+bool offset_type_cmd(BkState* bk, int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk->offset_type_macro = argv[*i];
+        return true;
+    }
+    return false;
 }

@@ -23,7 +23,7 @@ void gen_example_parse_impl(String* book_buf, CCompound* ty) {
     print_string(book_buf, "}\n");
 }
 
-#define BK_GEN_EXT(...)\
+#define BK_ADD_SCHEMAS(s)\
 Schema example = {\
     .gen_dump_decl = gen_example_dump_decl,\
     .gen_parse_decl = gen_example_parse_decl,\
@@ -31,6 +31,6 @@ Schema example = {\
     .gen_parse_impl = gen_example_parse_impl,\
     .derive_attr = "derive_example"\
 };\
-push_da(&schemas, example);
+push_da(&s, example);
 
 #include "../bookkeeper_gen.c"
