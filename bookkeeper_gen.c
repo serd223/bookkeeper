@@ -1118,7 +1118,7 @@ void gen_bkconf_parse_impl(String* book_buf, CCompound* ty) {
     print_string(book_buf, "        if (*cur == '\\n') {\n");
     print_string(book_buf, "            value_end = cur - 1;\n");
     print_string(book_buf, "            value_int = atol(value_start);\n");
-    print_string(book_buf, "            value_int = atof(value_start);\n");
+    print_string(book_buf, "            value_double = atof(value_start);\n");
     print_string(book_buf, "            if (strncmp(value_start, \"true\", 4) == 0) value_bool = true;\n");
     print_string(book_buf, "            if (strncmp(value_start, \"false\", 5) == 0) value_bool = false;\n");
     print_string(book_buf, "            str_buf[sprintf(str_buf, \"%%.*s\", (int)(name_end - name_start) + 1, name_start)] = 0;\n");
@@ -1319,7 +1319,7 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
         if (*cur == '\n') {
             value_end = cur - 1;
             value_int = atol(value_start);
-            value_int = atof(value_start);
+            value_double = atof(value_start);
             if (strncmp(value_start, "true", 4) == 0) value_bool = true;
             if (strncmp(value_start, "false", 5) == 0) value_bool = false;
             str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
