@@ -5,6 +5,13 @@ To see `bookkeeper` in action, you can build the [`dump_people`](https://github.
     $ ./build/dump_people
 ```
 
+# Table of Contents
+  * [Overview](https://github.com/serd223/bookkeeper?tab=readme-ov-file#using-bookkeeper-in-your-project)
+  * [Using `bookkeeper` in your project](https://github.com/serd223/bookkeeper?tab=readme-ov-file#using-bookkeeper-in-your-project)
+  * [Configuration](https://github.com/serd223/bookkeeper?tab=readme-ov-file#configuration)
+  * [Schema Extensions](https://github.com/serd223/bookkeeper?tab=readme-ov-file#schema-extensions)
+  * [Build Instructions](https://github.com/serd223/bookkeeper?tab=readme-ov-file#build-instructions)
+
 # Overview
 `bookkeeper` is a tool inspired by the rust [`serde`](https://serde.rs/) crate and [this stream from Tsoding](https://youtu.be/hnM6aSpWJ8c?si=7WqJW0dy8oaJtdmm).
 
@@ -43,10 +50,25 @@ You _can_ just tell people to put the `bookkeeper_gen` executable in their `PATH
 
 You can build `bookkeeper_gen.c` however you like as long as it can find `stb_c_lexer.h`. For instructions on how to build the contents of _this repository_, see the [Build Instructions section](https://github.com/serd223/bookkeeper/tree/master?tab=readme-ov-file#build-instructions).
 
-# Dependencies of Generated Code
+## Dependencies of generated code
 Here is a list of dependencies the **generated code** may depend on:
-## parse_json_*
+### parse_json_*
  - These functions depend on the [cJSON](https://github.com/DaveGamble/cJSON) library to parse JSON. Users are expected to have already included this library before including generated code. (See [parse_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/parse_people.c))
+
+# Configuration
+The generated code and the behavior of `bookkeeper_gen` can be tweaked using a configuration file or via command line arguments. For a full list of command line options, you can run `bookkeeper_gen -h`.
+
+`bookkeeper_gen` looks for a file named `.bk.conf` in the current working directory by default. This file is optional and parsing a config file is skipped if it doesn't exist. Alternatively, you can supply a custom path for your config file with `bookkeeper_gen --config-path path/to/your/file`. If a custom config path is supplied and that file cannot be found/read, `bookkeeper_gen` reports an error and exits.
+
+A valid config file looks like this:
+```
+key=value
+key1=othervalue
+```
+Values can be integers, floats, strings, or booleans (denoted with `true` and `false`).
+
+See [full_config.conf](https://github.com/serd223/bookkeeper/blob/master/examples/full_config.conf) for a list of all valid keys.
+You can run `bookkeeper_gen -h` to see descriptions that explain what each key means.
 
 # Schema Extensions
 In order to add an extension to `bookkeeper`, you will need to wrap the `bookkeeper_gen.c` file in your custom wrapper. You will need the `bookkeeper_gen_ext.h` header to have access to the necessary types in your wrapper. A simple wrapper would look like this:
