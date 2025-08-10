@@ -40,13 +40,15 @@ DEALINGS IN THE SOFTWARE.
 #define printf(...)
 #endif
 
-// NOTE: in order to make this tool still have one-file source code, we have to _manually_
+// NOTE: in order to keep the source code of this tool in a single file, we have to _manually_
 // sync these definitions with the ones inside `bookkeeper_gen_ext.h` for consistency.
 // You should only put definitions inside the scope of this guard if that definition needs to
 // be accessible inside extensions.
 #ifndef __BK_GEN_EXT_DEFINITIONS
 typedef struct {
     bool silent;
+    bool disable_dump;
+    bool disable_parse;
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
@@ -239,11 +241,13 @@ bool search_directory_cmd(BkState* bk, int* i, int argc, char** argv);
 bool output_directory_cmd(BkState* bk, int* i, int argc, char** argv);
 bool silent_cmd(BkState* bk, int* i, int argc, char** argv);
 bool derive_all_cmd(BkState* bk, int* i, int argc, char** argv);
+bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv);
+bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv);
 bool gen_impl_cmd(BkState* bk, int* i, int argc, char** argv);
 bool gen_fmt_dst_cmd(BkState* bk, int* i, int argc, char** argv);
 bool gen_fmt_cmd(BkState* bk, int* i, int argc, char** argv);
-bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv);
-bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv);
+bool set_disable_dump_cmd(BkState* bk, int* i, int argc, char** argv);
+bool set_disable_parse_cmd(BkState* bk, int* i, int argc, char** argv);
 bool offset_type_cmd(BkState* bk, int* i, int argc, char** argv);
 
 #define exec_cmd(cmd)\
@@ -300,6 +304,20 @@ static Command commands[] = {
         .exec_c = derive_all_cmd
     },
     {
+        .name = "disable-dump",
+        .flag = "--disable-dump",
+        .usage = "--disable-dump",
+        .desc = "Disables the generation of `dump` functions",
+        .exec_c = disable_dump_cmd
+    },
+    {
+        .name = "disable-parse",
+        .flag = "--disable-parse",
+        .usage = "--disable-parse",
+        .desc = "Disables the generation of `parse` functions",
+        .exec_c = disable_parse_cmd
+    },
+    {
         .name = "gen-implementation",
         .flag = "--gen-implementation",
         .usage = "--gen-implementation <name>",
@@ -321,18 +339,18 @@ static Command commands[] = {
         .exec_c = gen_fmt_cmd
     },
     {
-        .name = "disable-dump",
-        .flag = "--disable-dump",
-        .usage = "--disable-dump <name>",
+        .name = "set-disable-dump",
+        .flag = "--set-disable-dump",
+        .usage = "--set-disable-dump <name>",
         .desc = "Sets the macro that will be used in the generated code to disable `dump` functions",
-        .exec_c = disable_dump_cmd
+        .exec_c = set_disable_dump_cmd
     },
     {
-        .name = "disable-parse",
-        .flag = "--disable-parse",
-        .usage = "--disable-parse <name>",
+        .name = "set-disable-parse",
+        .flag = "--set-disable-parse",
+        .usage = "--set-disable-parse <name>",
         .desc = "Sets the macro that will be used in the generated code to disable `parse` functions",
-        .exec_c = disable_parse_cmd
+        .exec_c = set_disable_parse_cmd
     },
     {
         .name = "offset-type",
@@ -475,16 +493,24 @@ int main(int argc, char** argv) {
                     size_t num_decls = 0;
                     for (size_t i = 0; i < types.len; ++i) {
                         print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                        num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
-                        num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                        if (!bk.disable_dump) {
+                            num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
+                        }
+                        if (!bk.disable_parse) {
+                            num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                        }
                         print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
                     }
                     if (num_decls > 0) {
                         print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
                         for (size_t i = 0; i < types.len; ++i) {
                             print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                            gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
-                            gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                            if (!bk.disable_dump) {
+                                gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
+                            }
+                            if (!bk.disable_parse) {
+                                gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                            }
                             print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
                         }
                         print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
@@ -1091,7 +1117,7 @@ bool gen_fmt_cmd(BkState* bk, int* i, int argc, char** argv) {
     return false;
 }
 
-bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool set_disable_dump_cmd(BkState* bk, int* i, int argc, char** argv) {
     if (++*i < argc) {
         bk->disable_dump_macro = argv[*i];
         return true;
@@ -1099,7 +1125,7 @@ bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv) {
     return false;
 }
 
-bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv) {
+bool set_disable_parse_cmd(BkState* bk, int* i, int argc, char** argv) {
     if (++*i < argc) {
         bk->disable_parse_macro = argv[*i];
         return true;
@@ -1113,4 +1139,20 @@ bool offset_type_cmd(BkState* bk, int* i, int argc, char** argv) {
         return true;
     }
     return false;
+}
+
+bool disable_dump_cmd(BkState* bk, int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    bk->disable_dump = true;
+    return true;
+}
+
+bool disable_parse_cmd(BkState* bk, int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    bk->disable_parse = true;
+    return true;
 }

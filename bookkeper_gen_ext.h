@@ -33,6 +33,8 @@ DEALINGS IN THE SOFTWARE.
 
 typedef struct {
     bool silent;
+    bool disable_dump;
+    bool disable_parse;
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
