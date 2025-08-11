@@ -54,6 +54,10 @@ DEALINGS IN THE SOFTWARE.
 typedef struct {
     char* output_mode;
     bool silent;
+    bool verbose;
+    bool warn_unknown_attr;
+    bool warn_no_search;
+    bool warn_no_output;
     bool disable_dump;
     bool disable_parse;
     bool watch_mode;
@@ -76,7 +80,7 @@ static char tmp_str[4096];
 #define fmt(...) strdup(tfmt(__VA_ARGS__))
 
 #define bk_log_loc(level, source, line, ...) do {\
-    if (!bk.silent) {\
+    if (!bk.silent && bk.verbose) {\
         switch (level) {\
         case LOG_INFO: {\
             fprintf(stderr, "%s:%d: [INFO] ", source, line);\
@@ -287,6 +291,9 @@ bool watch_delay_cmd(int* i, int argc, char** argv);
 bool search_directory_cmd(int* i, int argc, char** argv);
 bool output_directory_cmd(int* i, int argc, char** argv);
 bool silent_cmd(int* i, int argc, char** argv);
+bool verbose_cmd(int* i, int argc, char** argv);
+bool enable_warn_cmd(int* i, int argc, char** argv);
+bool disable_warn_cmd(int* i, int argc, char** argv);
 bool derive_all_cmd(int* i, int argc, char** argv);
 bool disable_dump_cmd(int* i, int argc, char** argv);
 bool disable_parse_cmd(int* i, int argc, char** argv);
@@ -299,6 +306,11 @@ bool offset_type_cmd(int* i, int argc, char** argv);
 
 #define exec_cmd(cmd)\
 ((cmd)->exec_c ? ((cmd)->exec_c(&i, argc, argv) ? true : (bk_printf("Usage of '%s': %s\n", (cmd)->name, (cmd)->usage), false)) : false)
+
+#define WARN_NO_SEARCH "no-search"
+#define WARN_NO_OUTPUT "no-output"
+#define WARN_UNKNOWN_ATTR "unknown-attr"
+#define WARN_LIST WARN_NO_SEARCH"|"WARN_NO_OUTPUT"|"WARN_UNKNOWN_ATTR
 
 static Command commands[] = {
     {
@@ -368,8 +380,29 @@ static Command commands[] = {
         .name = "silent",
         .flag = "--silent",
         .usage = "--silent",
-        .desc = "Turns off logging",
+        .desc = "Disables all terminal output",
         .exec_c = silent_cmd
+    },
+    {
+        .name = "verbose",
+        .flag = "-v",
+        .usage = "-v",
+        .desc = "Enables verbose terminal output",
+        .exec_c = verbose_cmd
+    },
+    {
+        .name = "enable-warning",
+        .flag = "-W",
+        .usage = "-W <"WARN_LIST">",
+        .desc = "Enables the specified warning",
+        .exec_c = enable_warn_cmd
+    },
+    {
+        .name = "disable-warning",
+        .flag = "-dW",
+        .usage = "-dW <"WARN_LIST">",
+        .desc = "Disables the specified warning",
+        .exec_c = disable_warn_cmd
     },
     {
         .name = "derive-all",
@@ -506,6 +539,11 @@ int main(int argc, char** argv) {
     bk.offset_type_macro = "BK_OFFSET_t";
     bk.type_disable_macro_prefix = "BK_DISABLE_";
 
+    bk.silent = false;
+    bk.verbose = false;
+    bk.warn_no_search = true;
+    bk.warn_no_output = true;
+    bk.warn_unknown_attr = true;
     bk.derive_all = false;
     bk.watch_mode = false;
     bk.watch_delay = 5;
@@ -568,11 +606,11 @@ int main(int argc, char** argv) {
     }
 
     if (!bk.input_path) {
-        bk_log(LOG_WARN, "No search path set, exiting...\n");
+        if (bk.warn_no_search) bk_log(LOG_WARN, "No search path set, exiting...\n");
         return 1;
     }
     if (!bk.out_path) {
-        bk_log(LOG_WARN, "No output path set, exiting...\n");
+        if (bk.warn_no_output) bk_log(LOG_WARN, "No output path set, exiting...\n");
         return 1;
     }
     
@@ -992,11 +1030,12 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
                     }
                 }
 
-                if (matched) {
-                    stb_c_lexer_get_token(&lex); // derive_schema
-                    stb_c_lexer_get_token(&lex); // (
-                    stb_c_lexer_get_token(&lex); // )
+                stb_c_lexer_get_token(&lex); // derive_schema
+                if (!matched) {
+                    if (bk.warn_unknown_attr) bk_log(LOG_WARN, "Found unknown attribute '%s' while parsing type '%s'\n", lex.string, strct.name);
                 }
+                stb_c_lexer_get_token(&lex); // (
+                stb_c_lexer_get_token(&lex); // )
                 
             }
             push_da(out, strct);
@@ -1408,6 +1447,54 @@ bool silent_cmd(int* i, int argc, char** argv) {
     return true;
 }
 
+bool verbose_cmd(int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    bk.verbose = true;
+    return true;
+}
+
+bool enable_warn_cmd(int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        char* w = argv[*i];
+        if (strcmp(w, WARN_NO_SEARCH) == 0) {
+            bk.warn_no_search = true;
+            return true;
+        } else if (strcmp(w, WARN_NO_OUTPUT) == 0) {
+            bk.warn_no_output = true;
+            return true;
+        } else if (strcmp(w, WARN_UNKNOWN_ATTR) == 0) {
+            bk.warn_unknown_attr = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+bool disable_warn_cmd(int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        char* w = argv[*i];
+        if (strcmp(w, WARN_NO_SEARCH) == 0) {
+            bk.warn_no_search = false;
+            return true;
+        } else if (strcmp(w, WARN_NO_OUTPUT) == 0) {
+            bk.warn_no_output = false;
+            return true;
+        } else if (strcmp(w, WARN_UNKNOWN_ATTR) == 0) {
+            bk.warn_unknown_attr = false;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    return false;
+}
+
 bool derive_all_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
@@ -1504,6 +1591,14 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
             } else if (strcmp(str_buf, "silent") == 0) {
                 dst->silent = value_bool;
+            } else if (strcmp(str_buf, "verbose") == 0) {
+                dst->verbose = value_bool;
+            } else if (strcmp(str_buf, "warn_unknown_attr") == 0) {
+                dst->warn_unknown_attr = value_bool;
+            } else if (strcmp(str_buf, "warn_no_search") == 0) {
+                dst->warn_no_search = value_bool;
+            } else if (strcmp(str_buf, "warn_no_output") == 0) {
+                dst->warn_no_output = value_bool;
             } else if (strcmp(str_buf, "disable_dump") == 0) {
                 dst->disable_dump = value_bool;
             } else if (strcmp(str_buf, "disable_parse") == 0) {
