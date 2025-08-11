@@ -56,7 +56,7 @@ typedef struct {
     bool silent;
     bool verbose;
     bool warn_unknown_attr;
-    bool warn_no_search;
+    bool warn_no_include;
     bool warn_no_output;
     bool disable_dump;
     bool disable_parse;
@@ -70,8 +70,8 @@ typedef struct {
     char* offset_type_macro;
     char* type_disable_macro_prefix;
     bool derive_all;
-    char* input_path;
-    char* out_path;
+    char* include_dir;
+    char* output_dir;
 } BkConfig derive_bkconf();
 
 static BkConfig bk = {0};
@@ -80,20 +80,24 @@ static char tmp_str[4096];
 #define fmt(...) strdup(tfmt(__VA_ARGS__))
 
 #define bk_log_loc(level, source, line, ...) do {\
-    if (!bk.silent && bk.verbose) {\
+    if (!bk.silent) {\
         switch (level) {\
         case LOG_INFO: {\
-            fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+            if (bk.verbose) {\
+                fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+                fprintf(stderr, __VA_ARGS__);\
+            }\
         } break;\
         case LOG_WARN: {\
             fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+            fprintf(stderr, __VA_ARGS__);\
         } break;\
         case LOG_ERROR: {\
             fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+            fprintf(stderr, __VA_ARGS__);\
         } break;\
         default: abort();\
         }\
-        fprintf(stderr, __VA_ARGS__);\
     }\
 } while(0)
 
@@ -288,7 +292,8 @@ bool config_path_cmd(int* i, int argc, char** argv);
 bool output_mode_cmd(int* i, int argc, char** argv);
 bool watch_cmd(int* i, int argc, char** argv);
 bool watch_delay_cmd(int* i, int argc, char** argv);
-bool search_directory_cmd(int* i, int argc, char** argv);
+bool include_file_cmd(int* i, int argc, char** argv);
+bool include_directory_cmd(int* i, int argc, char** argv);
 bool output_directory_cmd(int* i, int argc, char** argv);
 bool silent_cmd(int* i, int argc, char** argv);
 bool verbose_cmd(int* i, int argc, char** argv);
@@ -307,10 +312,10 @@ bool offset_type_cmd(int* i, int argc, char** argv);
 #define exec_cmd(cmd)\
 ((cmd)->exec_c ? ((cmd)->exec_c(&i, argc, argv) ? true : (bk_printf("Usage of '%s': %s\n", (cmd)->name, (cmd)->usage), false)) : false)
 
-#define WARN_NO_SEARCH "no-search"
+#define WARN_NO_INCLUDE "no-include"
 #define WARN_NO_OUTPUT "no-output"
 #define WARN_UNKNOWN_ATTR "unknown-attr"
-#define WARN_LIST WARN_NO_SEARCH"|"WARN_NO_OUTPUT"|"WARN_UNKNOWN_ATTR
+#define WARN_LIST WARN_NO_INCLUDE"|"WARN_NO_OUTPUT"|"WARN_UNKNOWN_ATTR
 
 static Command commands[] = {
     {
@@ -356,11 +361,18 @@ static Command commands[] = {
         .exec_c = watch_delay_cmd
     },
     {
-        .name = "search-directory",
-        .flag = "-d",
-        .usage = "-d <dir>",
+        .name = "include-file",
+        .flag = "-i",
+        .usage = "-i <file>",
+        .desc = "The included file will be analyzed regardless of its extension",
+        .exec_c = include_file_cmd
+    },
+    {
+        .name = "include-directory",
+        .flag = "-I",
+        .usage = "-I <dir>",
         .desc = "The provided directory will be searched for '.c' or '.h' files to analyze",
-        .exec_c = search_directory_cmd
+        .exec_c = include_directory_cmd
     },
     // {
     //     .name = "output-file",
@@ -371,8 +383,8 @@ static Command commands[] = {
     // },
     {
         .name = "output-directory",
-        .flag = "-od",
-        .usage = "-od <dir>",
+        .flag = "-o",
+        .usage = "-o <dir>",
         .desc = "All generated files will be placed inside the provided directory",
         .exec_c = output_directory_cmd
     },
@@ -480,6 +492,7 @@ const static size_t commands_count = sizeof commands / sizeof *commands;
 #define bk_printf(...) (bk.silent ? 0 : printf(__VA_ARGS__))
 
 static char* config_path = "./.bk.conf";
+static Entries entries = {0};
 
 #define ret_clean(i)\
 ret_val = i;\
@@ -541,14 +554,14 @@ int main(int argc, char** argv) {
 
     bk.silent = false;
     bk.verbose = false;
-    bk.warn_no_search = true;
+    bk.warn_no_include = true;
     bk.warn_no_output = true;
     bk.warn_unknown_attr = true;
     bk.derive_all = false;
     bk.watch_mode = false;
     bk.watch_delay = 5;
-    bk.input_path = NULL;
-    bk.out_path = NULL;
+    bk.include_dir = NULL;
+    bk.output_dir = NULL;
 
     #ifdef DEBUG
     bk.silent = true;
@@ -589,7 +602,7 @@ int main(int argc, char** argv) {
     }
 
     if (argc <= 1 && !found_config) {
-        bk_printf("Basic usage: %s -d <search-directory> -od <output-directory>\n", argv[0]);
+        bk_printf("Basic usage: %s -I <search-directory> -o <output-directory>\n", argv[0]);
         bk_printf("Use `-h` to print all available commands, `-h <command-name>` to see that command's usage.\n");
         return 0;
     }
@@ -605,20 +618,22 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (!bk.input_path) {
-        if (bk.warn_no_search) bk_log(LOG_WARN, "No search path set, exiting...\n");
+    if (bk.include_dir == NULL && entries.len == 0) {
+        if (bk.warn_no_include) bk_log(LOG_WARN, "No files were included, exiting...\n");
         return 1;
     }
-    if (!bk.out_path) {
+    if (bk.output_dir == NULL) {
         if (bk.warn_no_output) bk_log(LOG_WARN, "No output path set, exiting...\n");
         return 1;
     }
     
     {
-        size_t in_len = strlen(bk.input_path);
-        if (bk.input_path[in_len - 1] == '/') bk.input_path[in_len - 1] = 0;
-        size_t out_len = strlen(bk.out_path);
-        if (bk.out_path[out_len - 1] == '/') bk.out_path[out_len - 1] = 0;
+        if (bk.include_dir != NULL) {
+            size_t in_len = strlen(bk.include_dir);
+            if (bk.include_dir[in_len - 1] == '/') bk.include_dir[in_len - 1] = 0;
+        }
+        size_t out_len = strlen(bk.output_dir);
+        if (bk.output_dir[out_len - 1] == '/') bk.output_dir[out_len - 1] = 0;
     }
 
     OutputMode output_mode;
@@ -641,43 +656,43 @@ int main(int argc, char** argv) {
         print_string(&book_buf, "#define %s(...)\n", schemas.items[i].derive_attr);
     }
     print_string(&book_buf, "#endif // __DERIVES_H__\n");
-    write_entire_file(tfmt("%s/derives.h", bk.out_path), &book_buf);
+    write_entire_file(tfmt("%s/derives.h", bk.output_dir), &book_buf);
+
+    if (bk.include_dir != NULL) {
+        DIR* input_dir = opendir(bk.include_dir); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
+        if (!input_dir) {
+            bk_log(LOG_ERROR, "Couldn't open directory '%s': %s\n", bk.include_dir, strerror(errno));
+            return 1;
+        }
+        for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
+            if (ent->d_type == DT_REG) {
+                size_t name_len = strlen(ent->d_name);
+                if (name_len > 5 && strcmp(ent->d_name + name_len - 5, ".bk.h") == 0) continue;
+                if (name_len < 2) continue;
+                if (
+                    strcmp(ent->d_name + name_len - 2, ".c") == 0 ||
+                    strcmp(ent->d_name + name_len - 2, ".h") == 0
+                ) {
+                    char* in_file = fmt("%s/%s", bk.include_dir, ent->d_name); // alloc
+                    struct stat s = {0};
+                    stat(in_file, &s);
+
+                    Entry e = {
+                        .full = in_file,
+                        .name = strdup(ent->d_name), // alloc
+                        .sys_modif = s.st_mtim.tv_sec,
+                        .last_analyzed = 0
+                    };
+                    push_da(&entries, e);
+                }
+            }
+        }
+        closedir(input_dir);
+    }
 
     CCompounds types = {0};
     String file_buf = {0};
-    Entries entries = {0};
-
-    DIR* input_dir = opendir(bk.input_path); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
     size_t file_idx = 0;
-    if (!input_dir) {
-        bk_log(LOG_ERROR, "Couldn't open directory '%s': %s\n", bk.input_path, strerror(errno));
-        ret_clean(1);
-    }
-    for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
-        if (ent->d_type == DT_REG) {
-            size_t name_len = strlen(ent->d_name);
-            if (name_len > 5 && strcmp(ent->d_name + name_len - 5, ".bk.h") == 0) continue;
-            if (name_len < 2) continue;
-            if (
-                strcmp(ent->d_name + name_len - 2, ".c") == 0 ||
-                strcmp(ent->d_name + name_len - 2, ".h") == 0
-            ) {
-                char* in_file = fmt("%s/%s", bk.input_path, ent->d_name); // alloc
-                struct stat s = {0};
-                stat(in_file, &s);
-
-                Entry e = {
-                    .full = in_file,
-                    .name = strdup(ent->d_name), // alloc
-                    .sys_modif = s.st_mtim.tv_sec,
-                    .last_analyzed = 0
-                };
-                push_da(&entries, e);
-            }
-        }
-    }
-    closedir(input_dir);
-
     book_buf.len = 0;
     time_t current_iter = 0;
     time_t t = 0;
@@ -758,7 +773,7 @@ int main(int argc, char** argv) {
                             out_file = tfmt("%s.bk.h", in_file->full);
                         } break;
                         case O_DIR: {
-                            out_file = tfmt("%s/%s.bk.h", bk.out_path, in_file->name);
+                            out_file = tfmt("%s/%s.bk.h", bk.output_dir, in_file->name);
                         } break;
                         }
                         if (out_file) write_entire_file(out_file, &book_buf);
@@ -1423,9 +1438,32 @@ bool watch_delay_cmd(int* i, int argc, char** argv) {
     return false;
 }
 
-bool search_directory_cmd(int* i, int argc, char** argv) {
+// NOTE: Mutates global `entries` dynamic array
+bool include_file_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.input_path = argv[*i];
+        char* ent = argv[*i];
+        char* real = realpath(ent, NULL); // alloc
+        if (real == NULL) {
+            bk_log(LOG_ERROR, "Included file '%s' doesn't exist: %s\n", ent, strerror(errno));
+            return false;
+        }
+        struct stat s = {0};
+        stat(real, &s);
+        Entry e = {
+            .full = real,
+            .name = strdup(ent), // alloc
+            .sys_modif = s.st_mtim.tv_sec,
+            .last_analyzed = 0,
+        };
+        push_da(&entries, e);
+        return true;
+    }
+    return false;
+}
+
+bool include_directory_cmd(int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        bk.include_dir = argv[*i];
         return true;
     }
     return false;
@@ -1433,7 +1471,7 @@ bool search_directory_cmd(int* i, int argc, char** argv) {
 
 bool output_directory_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.out_path = argv[*i];
+        bk.output_dir = argv[*i];
         return true;
     }
     return false;
@@ -1458,8 +1496,8 @@ bool verbose_cmd(int* i, int argc, char** argv) {
 bool enable_warn_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         char* w = argv[*i];
-        if (strcmp(w, WARN_NO_SEARCH) == 0) {
-            bk.warn_no_search = true;
+        if (strcmp(w, WARN_NO_INCLUDE) == 0) {
+            bk.warn_no_include = true;
             return true;
         } else if (strcmp(w, WARN_NO_OUTPUT) == 0) {
             bk.warn_no_output = true;
@@ -1478,8 +1516,8 @@ bool enable_warn_cmd(int* i, int argc, char** argv) {
 bool disable_warn_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         char* w = argv[*i];
-        if (strcmp(w, WARN_NO_SEARCH) == 0) {
-            bk.warn_no_search = false;
+        if (strcmp(w, WARN_NO_INCLUDE) == 0) {
+            bk.warn_no_include = false;
             return true;
         } else if (strcmp(w, WARN_NO_OUTPUT) == 0) {
             bk.warn_no_output = false;
@@ -1595,8 +1633,8 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
                 dst->verbose = value_bool;
             } else if (strcmp(str_buf, "warn_unknown_attr") == 0) {
                 dst->warn_unknown_attr = value_bool;
-            } else if (strcmp(str_buf, "warn_no_search") == 0) {
-                dst->warn_no_search = value_bool;
+            } else if (strcmp(str_buf, "warn_no_include") == 0) {
+                dst->warn_no_include = value_bool;
             } else if (strcmp(str_buf, "warn_no_output") == 0) {
                 dst->warn_no_output = value_bool;
             } else if (strcmp(str_buf, "disable_dump") == 0) {
@@ -1637,13 +1675,13 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
             } else if (strcmp(str_buf, "derive_all") == 0) {
                 dst->derive_all = value_bool;
-            } else if (strcmp(str_buf, "input_path") == 0) {
+            } else if (strcmp(str_buf, "include_dir") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->input_path = strdup(str_buf);
+                dst->include_dir = strdup(str_buf);
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "out_path") == 0) {
+            } else if (strcmp(str_buf, "output_dir") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->out_path = strdup(str_buf);
+                dst->output_dir = strdup(str_buf);
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
             }
             name_start = cur + 1;
