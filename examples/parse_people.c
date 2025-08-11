@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include "people.h"
-#include "../thirdparty/cJSON.h"
+#include "cJSON.h"
 #define BK_IMPLEMENTATION
-#include "../gen/people.h.bk.h"
+#include "people.h.bk.h"
 
 #define JSON_FILE "./examples/manager.json"
 int main() {

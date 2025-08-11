@@ -32,6 +32,7 @@ DEALINGS IN THE SOFTWARE.
 #include <stdbool.h>
 
 typedef struct {
+    char* output_mode;
     bool silent;
     bool disable_dump;
     bool disable_parse;

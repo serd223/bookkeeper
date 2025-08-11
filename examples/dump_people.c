@@ -18,8 +18,8 @@ typedef struct {
 #define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
 #define DISABLE_PARSE
 #define BK_IMPLEMENTATION
-#include "../gen/people.h.bk.h"
-#include "../gen/dump_people.c.bk.h"
+#include "people.h.bk.h"
+#include "dump_people.c.bk.h"
 
 int main() {
     Person manager_personal = {

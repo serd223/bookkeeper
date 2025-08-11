@@ -43,6 +43,8 @@ build/bookkeeper_gen_ext: ./bookkeeper_gen.c ./bookkeper_gen_ext.h ./thirdparty/
 	clang $(CFLAGS) ./examples/bookkeeper_gen_ext.c -o ./build/bookkeeper_gen_ext
 
 clean:
+	rm -f ./examples/*.bk.h
+	rm -f ./examples/derives.h
 	rm -r ./build/
 	mkdir -p build
 	rm -r ./gen
