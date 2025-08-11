@@ -450,7 +450,7 @@ static char* config_path = "./.bk.conf";
 
 #define ret_clean(i)\
 ret_val = i;\
-goto cleanup;
+goto __bk_cleanup;
 
 #ifdef BK_RENAME_MAIN
 #define __BK_DEFINE_FN(name) int name(int argc, char** argv)
@@ -731,7 +731,7 @@ int main(int argc, char** argv) {
         }
     } while(bk.watch_mode);
 
-    cleanup:
+    __bk_cleanup:
     for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
     free(types.items);
 
