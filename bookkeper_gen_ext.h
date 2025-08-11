@@ -31,12 +31,15 @@ DEALINGS IN THE SOFTWARE.
 #include <stddef.h>
 #include <stdbool.h>
 
+#define derive_bkconf(...)
+
 typedef struct {
     char* output_mode;
     bool silent;
     bool disable_dump;
     bool disable_parse;
     bool watch_mode;
+    long watch_delay;
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
@@ -47,7 +50,7 @@ typedef struct {
     bool derive_all;
     char* input_path;
     char* out_path;
-} BkConfig;
+} BkConfig derive_bkconf();
 
 static BkConfig bk = {0};
 static char tmp_str[4096];

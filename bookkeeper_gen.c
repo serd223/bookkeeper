@@ -36,14 +36,10 @@ DEALINGS IN THE SOFTWARE.
 #include <stdbool.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 #include <sys/stat.h>
 #define STB_C_LEXER_IMPLEMENTATION
 #include "stb_c_lexer.h"
-
-/*
-    TODO: watch mode!!!!!!!!
-    watch mode is the main piece left to make this tool acutally usable
-*/
 
 // #define BK_ENABLE_BK_CONF_GEN
 
@@ -61,6 +57,7 @@ typedef struct {
     bool disable_dump;
     bool disable_parse;
     bool watch_mode;
+    long watch_delay;
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
@@ -209,7 +206,8 @@ typedef struct {
 typedef struct {
     char* full;
     char* name;
-    time_t modif_time;
+    time_t sys_modif;
+    time_t last_analyzed;
 } Entry;
 
 typedef struct {
@@ -284,6 +282,8 @@ typedef struct {
 bool help_cmd(int* i, int argc, char** argv);
 bool config_path_cmd(int* i, int argc, char** argv);
 bool output_mode_cmd(int* i, int argc, char** argv);
+bool watch_cmd(int* i, int argc, char** argv);
+bool watch_delay_cmd(int* i, int argc, char** argv);
 bool search_directory_cmd(int* i, int argc, char** argv);
 bool output_directory_cmd(int* i, int argc, char** argv);
 bool silent_cmd(int* i, int argc, char** argv);
@@ -328,6 +328,20 @@ static Command commands[] = {
         .usage = "-om <mirror|dir>",
         .desc = "Sets the preffered output mode. `mirror` puts generated files next to the files they were generated from. `dir` puts all generated files in the specified `output-directory`. (`derives.h` is always placed inside `output-directory`)",
         .exec_c = output_mode_cmd
+    },
+    {
+        .name = "watch",
+        .flag = "-w",
+        .usage = "-w",
+        .desc = "Enables watch mode that constantly analyzes recently modified files with a `watch-delay` second delay. (Exit with `CTRL-C`)",
+        .exec_c = watch_cmd
+    },
+    {
+        .name = "watch-delay",
+        .flag = "--watch-delay",
+        .usage = "--watch-delay <integer>",
+        .desc = "Sets `watch-delay` option, for more information see `watch`.",
+        .exec_c = watch_delay_cmd
     },
     {
         .name = "search-directory",
@@ -382,49 +396,49 @@ static Command commands[] = {
         .name = "gen-implementation",
         .flag = "--gen-implementation",
         .usage = "--gen-implementation <name>",
-        .desc = "Sets the macro that will be used in the generated code to control enabling implementation",
+        .desc = "Sets the macro that will be used in the generated code to control enabling implementation (`BK_IMPLEMENTATION`)",
         .exec_c = gen_impl_cmd
     },
     {
         .name = "gen-fmt-dst",
         .flag = "--gen-fmt-dst",
         .usage = "--gen-fmt-dst <name>",
-        .desc = "Sets the macro that will be used in the generated code to control the type of `dst` in `dump` functions",
+        .desc = "Sets the macro that will be used in the generated code to control the type of `dst` in `dump` functions (`BK_FMT_DST_t`)",
         .exec_c = gen_fmt_dst_cmd
     },
     {
         .name = "gen-fmt",
         .flag = "--gen-fmt",
         .usage = "--gen-fmt <name>",
-        .desc = "Sets the macro that will be used in the generated `dump` functions to output with `printf` style arguments",
+        .desc = "Sets the macro that will be used in the generated `dump` functions to output with `printf` style arguments (`BK_FMT`)",
         .exec_c = gen_fmt_cmd
     },
     {
         .name = "set-disable-dump",
         .flag = "--set-disable-dump",
         .usage = "--set-disable-dump <name>",
-        .desc = "Sets the macro that will be used in the generated code to disable `dump` functions",
+        .desc = "Sets the macro that will be used in the generated code to disable `dump` functions (`BK_DISABLE_DUMP`)",
         .exec_c = set_disable_dump_cmd
     },
     {
         .name = "set-disable-parse",
         .flag = "--set-disable-parse",
         .usage = "--set-disable-parse <name>",
-        .desc = "Sets the macro that will be used in the generated code to disable `parse` functions",
+        .desc = "Sets the macro that will be used in the generated code to disable `parse` functions (`BK_DISABLE_PARSE`)",
         .exec_c = set_disable_parse_cmd
     },
     {
         .name = "offset-type",
         .flag = "--offset-type",
         .usage = "--offset-type <name>",
-        .desc = "Sets the macro that will be used in the generated code to control the type of the `offset` variable inside `dump` functions",
+        .desc = "Sets the macro that will be used in the generated code to control the type of the `offset` variable inside `dump` functions (`BK_OFFSET_t`)",
         .exec_c = offset_type_cmd
     },
     {
         .name = "disable-type-prefix",
         .flag = "--disable-type-prefix",
         .usage = "--disable-type-prefix <name>",
-        .desc = "Sets the prefix of the generated macro that can be used to disable generated code for a specific user type (<prefix><typename>)",
+        .desc = "Sets the prefix of the generated macro that can be used to disable generated code for a specific user type (<prefix><typename>) (`BK_DISABLE_`)",
         .exec_c = offset_type_cmd
     },
 };
@@ -487,13 +501,14 @@ int main(int argc, char** argv) {
     bk.gen_fmt_macro = "BK_FMT";
     bk.gen_implementation_macro = "BK_IMPLEMENTATION";
     bk.gen_fmt_dst_macro = "BK_FMT_DST_t";
-    bk.disable_dump_macro = "DISABLE_DUMP";
-    bk.disable_parse_macro = "DISABLE_PARSE";
+    bk.disable_dump_macro = "BK_DISABLE_DUMP";
+    bk.disable_parse_macro = "BK_DISABLE_PARSE";
     bk.offset_type_macro = "BK_OFFSET_t";
     bk.type_disable_macro_prefix = "BK_DISABLE_";
 
     bk.derive_all = false;
     bk.watch_mode = false;
+    bk.watch_delay = 5;
     bk.input_path = NULL;
     bk.out_path = NULL;
 
@@ -602,9 +617,12 @@ int main(int argc, char** argv) {
     }
     for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
         if (ent->d_type == DT_REG) {
+            size_t name_len = strlen(ent->d_name);
+            if (name_len > 5 && strcmp(ent->d_name + name_len - 5, ".bk.h") == 0) continue;
+            if (name_len < 2) continue;
             if (
-                strcmp(ent->d_name + strlen(ent->d_name) - 2, ".c") == 0 ||
-                strcmp(ent->d_name + strlen(ent->d_name) - 2, ".h") == 0
+                strcmp(ent->d_name + name_len - 2, ".c") == 0 ||
+                strcmp(ent->d_name + name_len - 2, ".h") == 0
             ) {
                 char* in_file = fmt("%s/%s", bk.input_path, ent->d_name); // alloc
                 struct stat s = {0};
@@ -613,7 +631,8 @@ int main(int argc, char** argv) {
                 Entry e = {
                     .full = in_file,
                     .name = strdup(ent->d_name), // alloc
-                    .modif_time = s.st_mtim.tv_sec
+                    .sys_modif = s.st_mtim.tv_sec,
+                    .last_analyzed = 0
                 };
                 push_da(&entries, e);
             }
@@ -622,75 +641,96 @@ int main(int argc, char** argv) {
     closedir(input_dir);
 
     book_buf.len = 0;
-    for (size_t e_i = 0; e_i < entries.len; ++e_i) {
-        Entry in_file = entries.items[e_i];
-
-        unsigned long in_hash = djb2(in_file.full);
-        bk_log(LOG_INFO, "Analyzing file: %s\n", in_file.name);
-        file_buf.len = 0;
-        if (!read_entire_file(in_file.full, &file_buf)) continue;
-
-        types.len = 0;
-        analyze_file(schemas, file_buf, &types, bk.derive_all);
-        bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
-        book_buf.len = 0;
-        if (types.len > 0) {
-            print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file.full);
-            print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
-            print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_dst_macro);
-            print_string(&book_buf, "#define %s FILE*\n", bk.gen_fmt_dst_macro);
-            print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_dst_macro);
-            print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_macro);
-            print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", bk.gen_fmt_macro);
-            print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_macro);
-            print_string(&book_buf, "#ifndef %s\n", bk.offset_type_macro);
-            print_string(&book_buf, "#define %s size_t\n", bk.offset_type_macro);
-            print_string(&book_buf, "#endif // %s\n", bk.offset_type_macro);
-            size_t num_decls = 0;
-            for (size_t i = 0; i < types.len; ++i) {
-                print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                if (!bk.disable_dump) {
-                    num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
-                }
-                if (!bk.disable_parse) {
-                    num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
-                }
-                print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+    time_t current_iter = 0;
+    time_t t = 0;
+    // TODO: This is a very basic implementation of a watch mode and causes CPUs to spin for no reason
+    // might want to use something like `poll` to detect file events?
+    do {
+        t = time(NULL);
+        if (t - current_iter < (time_t)bk.watch_delay) continue;
+        current_iter = t;
+        for (size_t e_i = 0; e_i < entries.len; ++e_i) {
+            Entry* in_file = entries.items + e_i;
+            {
+                struct stat s = {0};
+                stat(in_file->full, &s);
+                in_file->sys_modif = s.st_mtim.tv_sec;
             }
-            if (num_decls > 0) {
-                print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
-                for (size_t i = 0; i < types.len; ++i) {
-                    if (types.items[i].derived_schemas != 0) {
+            if (in_file->sys_modif > in_file->last_analyzed) {
+                unsigned long in_hash = djb2(in_file->full);
+                bk_log(LOG_INFO, "Analyzing file: %s\n", in_file->name);
+                file_buf.len = 0;
+                if (!read_entire_file(in_file->full, &file_buf)) continue;
+
+                // NOTE: We might just decide to leak memory if free`ing the contents of
+                // `types` repeatedly causes performance issues.
+                for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
+                types.len = 0;
+                analyze_file(schemas, file_buf, &types, bk.derive_all);
+                bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
+                book_buf.len = 0;
+                current_iter = time(NULL);
+                in_file->last_analyzed = current_iter;
+                if (types.len > 0) {
+                    print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file->full);
+                    print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
+                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#define %s FILE*\n", bk.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_macro);
+                    print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", bk.gen_fmt_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_macro);
+                    print_string(&book_buf, "#ifndef %s\n", bk.offset_type_macro);
+                    print_string(&book_buf, "#define %s size_t\n", bk.offset_type_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.offset_type_macro);
+                    size_t num_decls = 0;
+                    for (size_t i = 0; i < types.len; ++i) {
                         print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                    }
-                    if (!bk.disable_dump) {
-                        gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
-                    }
-                    if (!bk.disable_parse) {
-                        gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
-                    }
-                    if (types.items[i].derived_schemas != 0) {
+                        if (!bk.disable_dump) {
+                            num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
+                        }
+                        if (!bk.disable_parse) {
+                            num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                        }
                         print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
                     }
-                }
-                print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
+                    if (num_decls > 0) {
+                        print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
+                        for (size_t i = 0; i < types.len; ++i) {
+                            if (types.items[i].derived_schemas != 0) {
+                                print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                            }
+                            if (!bk.disable_dump) {
+                                gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
+                            }
+                            if (!bk.disable_parse) {
+                                gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                            }
+                            if (types.items[i].derived_schemas != 0) {
+                                print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                            }
+                        }
+                        print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
 
-                push_da(&book_buf, '\n');
-                print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                char* out_file = NULL;
-                switch (output_mode) {
-                case O_MIRROR: {
-                    out_file = tfmt("%s.bk.h", in_file.full);
-                } break;
-                case O_DIR: {
-                    out_file = tfmt("%s/%s.bk.h", bk.out_path, in_file.name);
-                } break;
+                        push_da(&book_buf, '\n');
+                        print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
+                        char* out_file = NULL;
+                        switch (output_mode) {
+                        case O_MIRROR: {
+                            out_file = tfmt("%s.bk.h", in_file->full);
+                        } break;
+                        case O_DIR: {
+                            out_file = tfmt("%s/%s.bk.h", bk.out_path, in_file->name);
+                        } break;
+                        }
+                        if (out_file) write_entire_file(out_file, &book_buf);
+                        file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
+                    }
                 }
-                if (out_file) write_entire_file(out_file, &book_buf);
-                file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
             }
         }
-    }
+    } while(bk.watch_mode);
+
     cleanup:
     for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
     free(types.items);
@@ -1323,6 +1363,27 @@ bool output_mode_cmd(int* i, int argc, char** argv) {
     return false;    
 }
 
+bool watch_cmd(int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    bk.watch_mode = true;
+    return true;
+}
+
+bool watch_delay_cmd(int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        char* endptr = NULL;
+        long val = strtol(argv[*i], &endptr, 10);
+        if (endptr && *endptr == 0) {
+            bk.watch_delay = val;
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
 bool search_directory_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         bk.input_path = argv[*i];
@@ -1437,12 +1498,20 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
             if (strncmp(value_start, "true", 4) == 0) value_bool = true;
             if (strncmp(value_start, "false", 5) == 0) value_bool = false;
             str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            if (strcmp(str_buf, "silent") == 0) {
+            if (strcmp(str_buf, "output_mode") == 0) {
+                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+                dst->output_mode = strdup(str_buf);
+                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
+            } else if (strcmp(str_buf, "silent") == 0) {
                 dst->silent = value_bool;
             } else if (strcmp(str_buf, "disable_dump") == 0) {
                 dst->disable_dump = value_bool;
             } else if (strcmp(str_buf, "disable_parse") == 0) {
                 dst->disable_parse = value_bool;
+            } else if (strcmp(str_buf, "watch_mode") == 0) {
+                dst->watch_mode = value_bool;
+            } else if (strcmp(str_buf, "watch_delay") == 0) {
+                dst->watch_delay = value_int;
             } else if (strcmp(str_buf, "gen_fmt_macro") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
                 dst->gen_fmt_macro = strdup(str_buf);
