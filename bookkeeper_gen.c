@@ -71,6 +71,7 @@ typedef struct {
     char* type_disable_macro_prefix;
     bool derive_all;
     char* include_dir;
+    char* include_files; // This field is only used for loading include files from configs
     char* output_dir;
 } BkConfig derive_bkconf();
 
@@ -89,11 +90,19 @@ static char tmp_str[4096];
             }\
         } break;\
         case LOG_WARN: {\
-            fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+            if (bk.verbose) {\
+                fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+            } else {\
+                fprintf(stderr, "[WARN] ");\
+            }\
             fprintf(stderr, __VA_ARGS__);\
         } break;\
         case LOG_ERROR: {\
-            fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+            if (bk.verbose) {\
+                fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+            } else {\
+                fprintf(stderr, "[ERROR] ");\
+            }\
             fprintf(stderr, __VA_ARGS__);\
         } break;\
         default: abort();\
@@ -230,6 +239,7 @@ bool read_entire_file_loc(const char* file_name, String* dst, const char* source
 bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
 unsigned long djb2(const char* s);
+bool entry_from_file(const char* file_name, Entry* out);
 
 // Cleanup functions
 void free_ccompund(CCompound cc);
@@ -488,8 +498,10 @@ static char* config_path = "./.bk.conf";
 static Entries entries = {0};
 
 #define ret_clean(i)\
-ret_val = i;\
-goto __bk_cleanup;
+do {\
+    ret_val = i;\
+    goto __bk_cleanup;\
+} while(0)
 
 #ifdef BK_RENAME_MAIN
 #define __BK_DEFINE_FN(name) int name(int argc, char** argv)
@@ -499,9 +511,15 @@ __BK_DEFINE_FN(BK_RENAME_MAIN) {
 int main(int argc, char** argv) {
 #endif // BK_RENAME_MAIN
 
+    // Declaring resources that will be cleaned up here before declaring
+    // `ret_val` to avoid situations where we try to cleanup these resources
+    // before they were *declared* by goto'ing to `__bk_cleanup` inside `ret_clean`
+    CCompounds types = {0};
+    String file_buf = {0};
+    Schemas schemas = {0};
+    
     int ret_val = 0;
 
-    Schemas schemas = {0};
     Schema json = {
         .gen_dump_decl = gen_json_dump_decl, 
         .gen_parse_decl = gen_json_parse_decl, 
@@ -530,12 +548,13 @@ int main(int argc, char** argv) {
     push_da(&schemas, bkconf);
     #endif // BK_ENABLE_BK_CONF_GEN
 
-    // Do whatever you want here
+    // For schema extensions
     #ifdef BK_ADD_SCHEMAS
     do {
         BK_ADD_SCHEMAS(schemas)
-    } while (0);
+    } while(0);
     #endif
+
     bk.output_mode = "mirror";
     bk.gen_fmt_macro = "BK_FMT";
     bk.gen_implementation_macro = "BK_IMPLEMENTATION";
@@ -590,14 +609,14 @@ int main(int argc, char** argv) {
             }
         } else if (custom_config) {
             bk_log(LOG_ERROR, "Couldn't open file '%s': %s\n", config_path, strerror(errno));
-            return 1;
+            ret_clean(1);
         }
     }
 
     if (argc <= 1 && !found_config) {
         bk_printf("Basic usage: %s -I <include-directory> -o <output-directory>\n", argv[0]);
         bk_printf("Use `-h` to print all available commands, `-h <command-name>` to see that command's usage.\n");
-        return 0;
+        ret_clean(0);
     }
 
     // NOTE: Assumes that `argv` lives long enough
@@ -605,19 +624,54 @@ int main(int argc, char** argv) {
         for (size_t j = 0; j < commands_count; ++j) {
             if (strcmp(commands[j].flag, argv[i]) == 0) {
                 if (!exec_cmd(&commands[j])) {
-                    return 1;
+                    ret_clean(1);
                 }
             }
+        }
+    }
+   
+    if (bk.include_files != NULL) {
+        size_t name_start = 0;
+        size_t list_len = strlen(bk.include_files);
+        if (list_len == 0) {
+            bk_log(LOG_ERROR, "Include file list in '%s' is empty.\n", config_path);
+            ret_clean(1);
+        }
+        for (size_t i = 0; i < list_len; ++i) {
+            if (bk.include_files[i] == ',') {
+                if (i > 0) {
+                    Entry e = {0};
+                    if (!entry_from_file(tfmt("%.*s", (int)(i - name_start), bk.include_files + name_start), &e)) {
+                        ret_clean(1);
+                    }
+                    push_da(&entries, e);
+                } else {
+                    bk_log(LOG_ERROR, "Include file list in '%s' starts with comma (',').\n", config_path);
+                    ret_clean(1);
+                }
+                if (i + 1 >= list_len) {
+                    bk_log(LOG_ERROR, "Include file list in '%s' contains a trailing comma (',').\n", config_path);
+                    ret_clean(1);
+                }
+                name_start = i + 1;
+            }
+        }
+        if (list_len - name_start > 0) {
+            Entry e = {0};
+            if (!entry_from_file(tfmt("%.*s", (int)(list_len - name_start), bk.include_files + name_start), &e)) {
+                ret_clean(1);
+            }
+            push_da(&entries, e);
         }
     }
 
     if (bk.include_dir == NULL && entries.len == 0) {
         if (bk.warn_no_include) bk_log(LOG_WARN, "No files were included, exiting...\n");
-        return 1;
+        ret_clean(1);
     }
     if (bk.output_dir == NULL) {
         if (bk.warn_no_output) bk_log(LOG_WARN, "No output path set, exiting...\n");
-        return 1;
+        ret_clean(1);
     }
     
     {
@@ -636,7 +690,7 @@ int main(int argc, char** argv) {
         output_mode = O_DIR;
     } else {
         bk_printf("Unknown output mode '%s', exiting...\n", bk.output_mode);
-        return 1;
+        ret_clean(1);
     }
 
     bk_log(LOG_INFO, "Number of registered schemas: %lu\n", schemas.len);
@@ -655,7 +709,7 @@ int main(int argc, char** argv) {
         DIR* input_dir = opendir(bk.include_dir); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
         if (!input_dir) {
             bk_log(LOG_ERROR, "Couldn't open directory '%s': %s\n", bk.include_dir, strerror(errno));
-            return 1;
+            ret_clean(1);
         }
         for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
             if (ent->d_type == DT_REG) {
@@ -683,8 +737,6 @@ int main(int argc, char** argv) {
         closedir(input_dir);
     }
 
-    CCompounds types = {0};
-    String file_buf = {0};
     size_t file_idx = 0;
     book_buf.len = 0;
     time_t current_iter = 0;
@@ -778,13 +830,18 @@ int main(int argc, char** argv) {
     } while(bk.watch_mode);
 
     __bk_cleanup:
-    for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
-    free(types.items);
+    if (types.items != NULL) {
+        for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
+        free(types.items);
+    }
 
-    free(file_buf.items);
+    if (file_buf.items != NULL) free(file_buf.items);
+    if (schemas.items != NULL) free(schemas.items);
 
-    for (size_t i = 0; i < entries.len; ++i) free_entry(entries.items[i]);
-    free(entries.items);
+    if (entries.items != NULL) {
+        for (size_t i = 0; i < entries.len; ++i) free_entry(entries.items[i]);
+        free(entries.items);
+    }
     
     return ret_val;
 }
@@ -841,6 +898,22 @@ unsigned long djb2(const char* s) {
     unsigned long hash = 5381;
     for (char c; (c = *s++);) hash = ((hash << 5) + hash) + (unsigned long) c;
     return hash;
+}
+
+bool entry_from_file(const char* file_name, Entry* out) {
+    char* real = realpath(file_name, NULL); // alloc
+    if (real == NULL) {
+        bk_log(LOG_ERROR, "File '%s' doesn't exist: %s\n", file_name, strerror(errno));
+        return false;
+    }
+    struct stat s = {0};
+    stat(real, &s);
+    out->full = real;
+    out->name = strdup(file_name); // alloc
+    out->sys_modif = s.st_mtim.tv_sec;
+    out->last_analyzed = 0;
+
+    return true;
 }
 
 // Cleanup functions
@@ -1435,19 +1508,8 @@ bool watch_delay_cmd(int* i, int argc, char** argv) {
 bool include_file_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         char* ent = argv[*i];
-        char* real = realpath(ent, NULL); // alloc
-        if (real == NULL) {
-            bk_log(LOG_ERROR, "Included file '%s' doesn't exist: %s\n", ent, strerror(errno));
-            return false;
-        }
-        struct stat s = {0};
-        stat(real, &s);
-        Entry e = {
-            .full = real,
-            .name = strdup(ent), // alloc
-            .sys_modif = s.st_mtim.tv_sec,
-            .last_analyzed = 0,
-        };
+        Entry e = {0};
+        if (!entry_from_file(ent, &e)) return false; // alloc
         push_da(&entries, e);
         return true;
     }
@@ -1671,6 +1733,10 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
             } else if (strcmp(str_buf, "include_dir") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
                 dst->include_dir = strdup(str_buf);
+                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
+            } else if (strcmp(str_buf, "include_files") == 0) {
+                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+                dst->include_files = strdup(str_buf);
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
             } else if (strcmp(str_buf, "output_dir") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
