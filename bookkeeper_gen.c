@@ -332,13 +332,6 @@ static Command commands[] = {
         .desc = "Changes the path that will be used to load the configuration file (default value is './bk.conf')",
         .exec_c = config_path_cmd
     },
-    // {
-    //     .name = "search-file",
-    //     .flag = "-f",
-    //     .usage = "-f <file>",
-    //     .desc = "TODO",
-    //     .exec_c = NULL // TODO: search-file
-    // },
     {
         .name = "output-mode",
         .flag = "-om",
@@ -602,7 +595,7 @@ int main(int argc, char** argv) {
     }
 
     if (argc <= 1 && !found_config) {
-        bk_printf("Basic usage: %s -I <search-directory> -o <output-directory>\n", argv[0]);
+        bk_printf("Basic usage: %s -I <include-directory> -o <output-directory>\n", argv[0]);
         bk_printf("Use `-h` to print all available commands, `-h <command-name>` to see that command's usage.\n");
         return 0;
     }
