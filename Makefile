@@ -8,7 +8,7 @@ FLAGS_LIST = $(subst $(space),$(comma),$(CFLAGS))
 a := $(file > .clangd, CompileFlags:)
 b := $(file >> .clangd, 	Add: [$(FLAGS_LIST)])
 
-.PHONY: default clean dump gen parse bk all
+.PHONY: default clean dump gen parse bk all quick
 
 default: build/bookkeeper_gen
 
@@ -19,19 +19,24 @@ debug: ./build/bookkeeper_gen_debug
 gen: ./build/bookkeeper_gen ./examples/people.h ./examples/dump_people.c ./examples/.bk.conf
 	./build/bookkeeper_gen --config-path ./examples/.bk.conf
 
+quick: ./build/quick
+
 dump: ./build/dump_people
 
 parse: ./build/parse_people
 
 schema_ext: ./build/bookkeeper_gen_ext
 
-all: dump parse schema_ext
+all: quick dump parse schema_ext
 
 build/bookkeeper_gen: bookkeeper_gen.c ./thirdparty/stb_c_lexer.h
 	clang $(CFLAGS) bookkeeper_gen.c -o ./build/bookkeeper_gen
 
 build/bookkeeper_gen_debug: bookkeeper_gen.c ./thirdparty/stb_c_lexer.h
 	clang $(CFLAGS) bookkeeper_gen.c -g -DDEBUG -o ./build/bookkeeper_gen_debug
+
+build/quick: ./examples/people.h ./examples/quick.c gen
+	clang $(CFLAGS) -g ./examples/quick.c -o ./build/quick
 
 build/dump_people: ./examples/people.h ./examples/dump_people.c gen
 	clang $(CFLAGS) -g ./examples/dump_people.c -o ./build/dump_people

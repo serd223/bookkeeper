@@ -8,7 +8,7 @@
 #include "people.h.bk.h"
 
 #define JSON_FILE "./examples/manager.json"
-int main() {
+int main(void) {
     printf("[INFO] Reading '"JSON_FILE"'...\n");
     struct stat s = {0};
     stat(JSON_FILE, &s);

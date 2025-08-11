@@ -21,7 +21,7 @@ typedef struct {
 #include "people.h.bk.h"
 #include "dump_people.c.bk.h"
 
-int main() {
+int main(void) {
     Person manager_personal = {
         .name = "Gabe Newell",
         .age = 62,
