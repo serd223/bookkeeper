@@ -36,6 +36,10 @@ DEALINGS IN THE SOFTWARE.
 typedef struct {
     char* output_mode;
     bool silent;
+    bool verbose;
+    bool warn_unknown_attr;
+    bool warn_no_include;
+    bool warn_no_output;
     bool disable_dump;
     bool disable_parse;
     bool watch_mode;
@@ -49,6 +53,7 @@ typedef struct {
     char* type_disable_macro_prefix;
     bool derive_all;
     char* include_dir;
+    char* include_files; // This field is only used for loading include files from configs
     char* output_dir;
 } BkConfig derive_bkconf();
 
@@ -61,17 +66,21 @@ static char tmp_str[4096];
     if (!bk.silent) {\
         switch (level) {\
         case LOG_INFO: {\
-            fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+            if (bk.verbose) {\
+                fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+                fprintf(stderr, __VA_ARGS__);\
+            }\
         } break;\
         case LOG_WARN: {\
             fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+            fprintf(stderr, __VA_ARGS__);\
         } break;\
         case LOG_ERROR: {\
             fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+            fprintf(stderr, __VA_ARGS__);\
         } break;\
         default: abort();\
         }\
-        fprintf(stderr, __VA_ARGS__);\
     }\
 } while(0)
 
