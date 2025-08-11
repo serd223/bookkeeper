@@ -36,6 +36,7 @@ typedef struct {
     bool silent;
     bool disable_dump;
     bool disable_parse;
+    bool watch_mode;
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
@@ -103,7 +104,7 @@ typedef enum {
 
 typedef struct {
     CType_Kind kind;
-    const char* name; // CEXTERNAL
+    char* name; // CEXTERNAL
     CPrimitive type;  // CPIRIMITIVE
 } CType;
 
@@ -114,7 +115,7 @@ typedef struct {
 } CTypes;
 
 typedef struct {
-    const char* name;
+    char* name;
     CType type;
 } Field;
 
@@ -127,7 +128,7 @@ typedef struct {
 typedef struct {
     int derived_schemas; // TODO: this bitfield method puts a (somewhat low) hard limit on the amount of allowed schmeas
     Fields fields;
-    const char* name;
+    char* name;
 } CCompound;
 
 typedef struct {

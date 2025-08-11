@@ -60,6 +60,7 @@ typedef struct {
     bool silent;
     bool disable_dump;
     bool disable_parse;
+    bool watch_mode;
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
@@ -127,7 +128,7 @@ typedef enum {
 
 typedef struct {
     CType_Kind kind;
-    const char* name; // CEXTERNAL
+    char* name; // CEXTERNAL
     CPrimitive type;  // CPIRIMITIVE
 } CType;
 
@@ -138,7 +139,7 @@ typedef struct {
 } CTypes;
 
 typedef struct {
-    const char* name;
+    char* name;
     CType type;
 } Field;
 
@@ -151,7 +152,7 @@ typedef struct {
 typedef struct {
     int derived_schemas; // TODO: this bitfield method puts a (somewhat low) hard limit on the amount of allowed schmeas
     Fields fields;
-    const char* name;
+    char* name;
 } CCompound;
 
 typedef struct {
@@ -205,12 +206,30 @@ typedef struct {
     size_t cap;
 } Schemas;
 
+typedef struct {
+    char* full;
+    char* name;
+    time_t modif_time;
+} Entry;
+
+typedef struct {
+    Entry* items;
+    size_t len;
+    size_t cap;
+} Entries;
+
 // General utility functions
 bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line);
 #define read_entire_file(file_name, dst) read_entire_file_loc(file_name, dst, __FILE__, __LINE__)
 bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
 unsigned long djb2(const char* s);
+
+// Cleanup functions
+void free_ccompund(CCompound cc);
+void free_field(Field f);
+void free_ctype(CType ct);
+void free_entry(Entry e);
 
 // Parsing C code
 bool va_get_expect_ids(stb_lexer* lex, va_list args);
@@ -415,6 +434,10 @@ const static size_t commands_count = sizeof commands / sizeof *commands;
 
 static char* config_path = "./.bk.conf";
 
+#define ret_clean(i)\
+ret_val = i;\
+goto cleanup;
+
 #ifdef BK_RENAME_MAIN
 #define __BK_DEFINE_FN(name) int name(int argc, char** argv)
 __BK_DEFINE_FN(BK_RENAME_MAIN) {
@@ -422,7 +445,9 @@ __BK_DEFINE_FN(BK_RENAME_MAIN) {
 #else
 int main(int argc, char** argv) {
 #endif // BK_RENAME_MAIN
-    
+
+    int ret_val = 0;
+
     Schemas schemas = {0};
     Schema json = {
         .gen_dump_decl = gen_json_dump_decl, 
@@ -468,6 +493,7 @@ int main(int argc, char** argv) {
     bk.type_disable_macro_prefix = "BK_DISABLE_";
 
     bk.derive_all = false;
+    bk.watch_mode = false;
     bk.input_path = NULL;
     bk.out_path = NULL;
 
@@ -564,14 +590,15 @@ int main(int argc, char** argv) {
     print_string(&book_buf, "#endif // __DERIVES_H__\n");
     write_entire_file(tfmt("%s/derives.h", bk.out_path), &book_buf);
 
-    CCompounds types = {0}; // leaks (static data)
-    String file_buf = {0}; // leaks (static data)
-    book_buf.len = 0;
+    CCompounds types = {0};
+    String file_buf = {0};
+    Entries entries = {0};
+
     DIR* input_dir = opendir(bk.input_path); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
     size_t file_idx = 0;
     if (!input_dir) {
         bk_log(LOG_ERROR, "Couldn't open directory '%s': %s\n", bk.input_path, strerror(errno));
-        return 1;
+        ret_clean(1);
     }
     for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
         if (ent->d_type == DT_REG) {
@@ -579,79 +606,101 @@ int main(int argc, char** argv) {
                 strcmp(ent->d_name + strlen(ent->d_name) - 2, ".c") == 0 ||
                 strcmp(ent->d_name + strlen(ent->d_name) - 2, ".h") == 0
             ) {
-                char* in_file = fmt("%s/%s", bk.input_path, ent->d_name);
-                unsigned long in_hash = djb2(in_file);
+                char* in_file = fmt("%s/%s", bk.input_path, ent->d_name); // alloc
+                struct stat s = {0};
+                stat(in_file, &s);
 
-                bk_log(LOG_INFO, "Analyzing file: %s\n", ent->d_name);
-                file_buf.len = 0;
-                if (!read_entire_file(in_file, &file_buf)) continue;
-
-                types.len = 0;
-                analyze_file(schemas, file_buf, &types, bk.derive_all);
-                bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
-                book_buf.len = 0;
-                if (types.len > 0) {
-                    print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file);
-                    print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_dst_macro);
-                    print_string(&book_buf, "#define %s FILE*\n", bk.gen_fmt_dst_macro);
-                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_dst_macro);
-                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_macro);
-                    print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", bk.gen_fmt_macro);
-                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_macro);
-                    print_string(&book_buf, "#ifndef %s\n", bk.offset_type_macro);
-                    print_string(&book_buf, "#define %s size_t\n", bk.offset_type_macro);
-                    print_string(&book_buf, "#endif // %s\n", bk.offset_type_macro);
-                    size_t num_decls = 0;
-                    for (size_t i = 0; i < types.len; ++i) {
-                        print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                        if (!bk.disable_dump) {
-                            num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
-                        }
-                        if (!bk.disable_parse) {
-                            num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
-                        }
-                        print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                    }
-                    if (num_decls > 0) {
-                        print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
-                        for (size_t i = 0; i < types.len; ++i) {
-                            if (types.items[i].derived_schemas != 0) {
-                                print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                            }
-                            if (!bk.disable_dump) {
-                                gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
-                            }
-                            if (!bk.disable_parse) {
-                                gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
-                            }
-                            if (types.items[i].derived_schemas != 0) {
-                                print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                            }
-                        }
-                        print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
-
-                        push_da(&book_buf, '\n');
-                        print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                        char* out_file = NULL;
-                        switch (output_mode) {
-                        case O_MIRROR: {
-                            out_file = tfmt("%s.bk.h", in_file);
-                        } break;
-                        case O_DIR: {
-                            out_file = tfmt("%s/%s.bk.h", bk.out_path, ent->d_name);
-                        } break;
-                        }
-                        if (out_file) write_entire_file(out_file, &book_buf);
-                        file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
-                    }
-                }
-                free(in_file);
+                Entry e = {
+                    .full = in_file,
+                    .name = strdup(ent->d_name), // alloc
+                    .modif_time = s.st_mtim.tv_sec
+                };
+                push_da(&entries, e);
             }
         }
     }
     closedir(input_dir);
-    return 0;
+
+    book_buf.len = 0;
+    for (size_t e_i = 0; e_i < entries.len; ++e_i) {
+        Entry in_file = entries.items[e_i];
+
+        unsigned long in_hash = djb2(in_file.full);
+        bk_log(LOG_INFO, "Analyzing file: %s\n", in_file.name);
+        file_buf.len = 0;
+        if (!read_entire_file(in_file.full, &file_buf)) continue;
+
+        types.len = 0;
+        analyze_file(schemas, file_buf, &types, bk.derive_all);
+        bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
+        book_buf.len = 0;
+        if (types.len > 0) {
+            print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file.full);
+            print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
+            print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_dst_macro);
+            print_string(&book_buf, "#define %s FILE*\n", bk.gen_fmt_dst_macro);
+            print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_dst_macro);
+            print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_macro);
+            print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", bk.gen_fmt_macro);
+            print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_macro);
+            print_string(&book_buf, "#ifndef %s\n", bk.offset_type_macro);
+            print_string(&book_buf, "#define %s size_t\n", bk.offset_type_macro);
+            print_string(&book_buf, "#endif // %s\n", bk.offset_type_macro);
+            size_t num_decls = 0;
+            for (size_t i = 0; i < types.len; ++i) {
+                print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                if (!bk.disable_dump) {
+                    num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
+                }
+                if (!bk.disable_parse) {
+                    num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                }
+                print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+            }
+            if (num_decls > 0) {
+                print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
+                for (size_t i = 0; i < types.len; ++i) {
+                    if (types.items[i].derived_schemas != 0) {
+                        print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                    }
+                    if (!bk.disable_dump) {
+                        gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
+                    }
+                    if (!bk.disable_parse) {
+                        gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                    }
+                    if (types.items[i].derived_schemas != 0) {
+                        print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                    }
+                }
+                print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
+
+                push_da(&book_buf, '\n');
+                print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
+                char* out_file = NULL;
+                switch (output_mode) {
+                case O_MIRROR: {
+                    out_file = tfmt("%s.bk.h", in_file.full);
+                } break;
+                case O_DIR: {
+                    out_file = tfmt("%s/%s.bk.h", bk.out_path, in_file.name);
+                } break;
+                }
+                if (out_file) write_entire_file(out_file, &book_buf);
+                file_idx += 1; // increment index counter even if write_entire_file errors just to be safe
+            }
+        }
+    }
+    cleanup:
+    for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
+    free(types.items);
+
+    free(file_buf.items);
+
+    for (size_t i = 0; i < entries.len; ++i) free_entry(entries.items[i]);
+    free(entries.items);
+    
+    return ret_val;
 }
 
 bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line) {
@@ -706,6 +755,27 @@ unsigned long djb2(const char* s) {
     unsigned long hash = 5381;
     for (char c; (c = *s++);) hash = ((hash << 5) + hash) + (unsigned long) c;
     return hash;
+}
+
+// Cleanup functions
+void free_ccompund(CCompound cc) {        
+    for (size_t i = 0; i < cc.fields.len; ++i) {
+        free_field(cc.fields.items[i]);
+    }
+}
+
+void free_field(Field f) {
+    free(f.name);
+    free_ctype(f.type);
+}
+
+void free_ctype(CType ct) {
+    if (ct.kind == CEXTERNAL) free(ct.name);
+}
+
+void free_entry(Entry e) {
+    free(e.full);
+    free(e.name);
 }
 
 bool va_get_expect_ids(stb_lexer* lex, va_list args) {
@@ -788,7 +858,7 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
                     stb_c_lexer_get_token(&lex); // name
-                    field.name = strdup(lex.string); // leaks
+                    field.name = strdup(lex.string); // alloc
                     stb_c_lexer_get_token(&lex); // ;
                     field.type.kind = CPRIMITIVE;
                     field.type.type = CSTRING;
@@ -798,7 +868,7 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
                     stb_c_lexer_get_token(&lex); // name
-                    field.name = strdup(lex.string); // leaks
+                    field.name = strdup(lex.string); // alloc
                     stb_c_lexer_get_token(&lex); // ;
                     field.type.kind = CPRIMITIVE;
                     field.type.type = CSTRING;
@@ -817,7 +887,7 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
                         stb_c_lexer_get_token(&lex); // type name 1
                         stb_c_lexer_get_token(&lex); // type name 2
                         stb_c_lexer_get_token(&lex); // name
-                        field.name = strdup(lex.string); // leaks
+                        field.name = strdup(lex.string); // alloc
                         stb_c_lexer_get_token(&lex); // ;
                         push_da(&strct.fields, field);
                     } else {
@@ -848,12 +918,12 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
                     stb_c_lexer_get_token(&lex); // type name
                     if (!is_known_primitive) {
                         field.type.kind = CEXTERNAL;
-                        field.type.name = strdup(lex.string); // leaks
+                        field.type.name = strdup(lex.string); // alloc
                     } else {
                         field.type.kind = CPRIMITIVE;
                     }
                     stb_c_lexer_get_token(&lex); // name
-                    field.name = strdup(lex.string); // leaks
+                    field.name = strdup(lex.string); // alloc
                     stb_c_lexer_get_token(&lex); // ;
                     push_da(&strct.fields, field);
                 } else {
@@ -863,7 +933,7 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
             }
             // `continue`ing here can leak unused field/type names of partially correct structs
             if (!get_expect_tokens(&lex, '}', CLEX_id, -1)) continue;
-            strct.name = strdup(lex.string); // leaks (static data)
+            strct.name = strdup(lex.string); // alloc
             while (peek_tokens(&lex, CLEX_id, '(', ')', -1)) {
                 bool matched = false;
 
@@ -955,7 +1025,8 @@ size_t gen_json_dump_decl(String* book_buf, CCompound* ty, const char* dst_type)
     return 1;
 }
 size_t gen_json_parse_decl(String* book_buf, CCompound* ty) {
-    print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst);\n", ty->name, ty->name);
+    print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst);\n\n", ty->name, ty->name);
+    print_string(book_buf, "/// WARN: Immediately returns on error, so `dst` might be partially filled.\n");
     print_string(book_buf, "int parse_json_%s(const char* src, unsigned long len, %s* dst);\n", ty->name, ty->name);
     return 2;
 }
@@ -1012,10 +1083,8 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
     for (size_t i = 0; i < ty->fields.len; ++i) {
         Field* f = ty->fields.items + i;
         print_string(book_buf, "    cJSON* %s_%s = cJSON_GetObjectItemCaseSensitive(src, \"%s\");\n", ty->name, f->name, f->name);
-        // TODO: these early returns might leak memory, use something like `goto end`
         print_string(book_buf, "    if (!%s_%s) return 0;\n", ty->name, f->name);
         if (f->type.kind == CEXTERNAL) {
-            // TODO: these early returns might leak memory, use something like `goto end`
             print_string(book_buf, "    if (!parse_cjson_%s(%s_%s, &dst->%s)) return 0;\n", f->type.name, ty->name, f->name, f->name);
         } else if (f->type.kind == CPRIMITIVE) {
             switch (f->type.type) {
@@ -1023,7 +1092,6 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
                 print_string(book_buf, "    if (cJSON_IsNumber(%s_%s)) {\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = %s_%s->valueint;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                // TODO: these early returns might leak memory, use something like `goto end`
                 print_string(book_buf, "        return 0;\n");
                 print_string(book_buf, "    }\n");
             } break;
@@ -1031,17 +1099,14 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
                 print_string(book_buf, "    if (cJSON_IsNumber(%s_%s)) {\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = %s_%s->valuedouble;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                // TODO: these early returns might leak memory, use something like `goto end`
                 print_string(book_buf, "        return 0;\n");
                 print_string(book_buf, "    }\n");
             } break;
             case CCHAR: {
                 print_string(book_buf, "    if (cJSON_IsString(%s_%s)) {\n", ty->name, f->name);
-                // TODO: these early returns might leak memory, use something like `goto end`
                 print_string(book_buf, "        if (!%s_%s->valuestring) { return 0; };\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = *%s_%s->valuestring;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                // TODO: these early returns might leak memory, use something like `goto end`
                 print_string(book_buf, "        return 0;\n");
                 print_string(book_buf, "    }\n");
                     
@@ -1050,18 +1115,15 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
                 print_string(book_buf, "    if (cJSON_IsBool(%s_%s)) {\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = %s_%s->valueint;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                // TODO: these early returns might leak memory, use something like `goto end`
                 print_string(book_buf, "        return 0;\n");
                 print_string(book_buf, "    }\n");
                     
             } break;
             case CSTRING: {
                 print_string(book_buf, "    if (cJSON_IsString(%s_%s)) {\n", ty->name, f->name);
-                // TODO: these early returns might leak memory, use something like `goto end`
                 print_string(book_buf, "        if (!%s_%s->valuestring) { return 0; };\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = strdup(%s_%s->valuestring);\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                // TODO: these early returns might leak memory, use something like `goto end`
                 print_string(book_buf, "        return 0;\n");
                 print_string(book_buf, "    }\n");
             } break;
@@ -1072,6 +1134,7 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
     }
     print_string(book_buf, "    return 1;\n");
     print_string(book_buf, "}\n");
+    print_string(book_buf, "/// WARN: Immediately returns on error, so `dst` might be partially filled.\n");
     print_string(book_buf, "int parse_json_%s(const char* src, unsigned long len, %s* dst) {\n", ty->name, ty->name);
     print_string(book_buf, "    cJSON* json = cJSON_ParseWithLength(src, len);\n");
     print_string(book_buf, "    if (!json) return 0;\n");
