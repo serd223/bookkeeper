@@ -39,7 +39,7 @@ build/dump_people: ./examples/people.h ./examples/dump_people.c gen
 build/parse_people: ./examples/people.h ./examples/parse_people.c gen ./thirdparty/cJSON.c ./thirdparty/cJSON.h
 	clang $(CFLAGS) -g ./examples/parse_people.c ./thirdparty/cJSON.c -o ./build/parse_people
 
-build/bookkeeper_gen_ext: ./bookkeeper_gen.c ./bookkeper_gen_ext.h ./thirdparty/stb_c_lexer.h
+build/bookkeeper_gen_ext: ./bookkeeper_gen.c ./bookkeeper_gen_ext.h ./thirdparty/stb_c_lexer.h
 	clang $(CFLAGS) ./examples/bookkeeper_gen_ext.c -o ./build/bookkeeper_gen_ext
 
 clean:
