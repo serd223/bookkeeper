@@ -48,8 +48,8 @@ typedef struct {
     char* offset_type_macro;
     char* type_disable_macro_prefix;
     bool derive_all;
-    char* input_path;
-    char* out_path;
+    char* include_dir;
+    char* output_dir;
 } BkConfig derive_bkconf();
 
 static BkConfig bk = {0};
