@@ -56,5 +56,7 @@ int main(void) {
     dump_json(&manager_with_salary, stdout);
     printf("\n\n[INFO] Debug Output:\n");
     dump_debug(&manager_with_salary, stdout);
+    printf("\n\n[INFO] Debug Output of manager_personal:\n");
+    dump_debug(&manager_personal, stdout);
     return 0;
 }
