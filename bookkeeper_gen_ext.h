@@ -29,6 +29,7 @@ DEALINGS IN THE SOFTWARE.
 #define __BK_GEN_EXT_DEFINITIONS
 
 #include <stddef.h>
+#include <time.h>
 #include <stdbool.h>
 
 #define derive_bkconf(...)
@@ -56,41 +57,6 @@ typedef struct {
     char* include_files; // This field is only used for loading include files from configs
     char* output_dir;
 } BkConfig derive_bkconf();
-
-static BkConfig bk = {0};
-static char tmp_str[4096];
-#define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
-#define fmt(...) strdup(tfmt(__VA_ARGS__))
-
-#define bk_log_loc(level, source, line, ...) do {\
-    if (!bk.silent) {\
-        switch (level) {\
-        case LOG_INFO: {\
-            if (bk.verbose) {\
-                fprintf(stderr, "%s:%d: [INFO] ", source, line);\
-                fprintf(stderr, __VA_ARGS__);\
-            }\
-        } break;\
-        case LOG_WARN: {\
-            fprintf(stderr, "%s:%d: [WARN] ", source, line);\
-            fprintf(stderr, __VA_ARGS__);\
-        } break;\
-        case LOG_ERROR: {\
-            fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
-            fprintf(stderr, __VA_ARGS__);\
-        } break;\
-        default: abort();\
-        }\
-    }\
-} while(0)
-
-#define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
-
-typedef enum {
-    LOG_INFO,
-    LOG_WARN,
-    LOG_ERROR,
-} Log_Level;
 
 typedef struct {
     char* items;
@@ -148,6 +114,83 @@ typedef struct {
     size_t len;
     size_t cap;
 } CCompounds;
+
+typedef struct {
+    size_t (*gen_dump_decl)(String* book_buf, CCompound* ty, const char* dst_type);
+    size_t (*gen_parse_decl)(String* book_buf, CCompound* ty);
+    void (*gen_dump_impl)(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+    void (*gen_parse_impl)(String* book_buf, CCompound* ty);
+    const char* derive_attr;
+    const char* name;
+} Schema;
+
+typedef struct {
+    Schema* items;
+    size_t len;
+    size_t cap;
+} Schemas;
+
+typedef struct {
+    char* full;
+    char* name;
+    time_t sys_modif;
+    time_t last_analyzed;
+} Entry;
+
+typedef struct {
+    Entry* items;
+    size_t len;
+    size_t cap;
+} Entries;
+
+typedef struct {
+    BkConfig conf;
+    Entries entries;
+    Schemas schemas;
+} BkState;
+
+static BkState bk = {0};
+static char tmp_str[4096];
+#define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
+#define fmt(...) strdup(tfmt(__VA_ARGS__))
+
+#define bk_log_loc(level, source, line, ...) do {\
+    if (!bk.conf.silent) {\
+        switch (level) {\
+        case LOG_INFO: {\
+            if (bk.conf.verbose) {\
+                fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+                fprintf(stderr, __VA_ARGS__);\
+            }\
+        } break;\
+        case LOG_WARN: {\
+            if (bk.conf.verbose) {\
+                fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+            } else {\
+                fprintf(stderr, "[WARN] ");\
+            }\
+            fprintf(stderr, __VA_ARGS__);\
+        } break;\
+        case LOG_ERROR: {\
+            if (bk.conf.verbose) {\
+                fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+            } else {\
+                fprintf(stderr, "[ERROR] ");\
+            }\
+            fprintf(stderr, __VA_ARGS__);\
+        } break;\
+        default: abort();\
+        }\
+    }\
+} while(0)
+
+#define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
+
+typedef enum {
+    LOG_INFO,
+    LOG_WARN,
+    LOG_ERROR,
+} Log_Level;
 
 #define push_da(arr, item) do {                                                     \
     if ((arr)->len + 1 >= (arr)->cap) {                                             \

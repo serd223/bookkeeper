@@ -75,49 +75,6 @@ typedef struct {
     char* output_dir;
 } BkConfig derive_bkconf();
 
-static BkConfig bk = {0};
-static char tmp_str[4096];
-#define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
-#define fmt(...) strdup(tfmt(__VA_ARGS__))
-
-#define bk_log_loc(level, source, line, ...) do {\
-    if (!bk.silent) {\
-        switch (level) {\
-        case LOG_INFO: {\
-            if (bk.verbose) {\
-                fprintf(stderr, "%s:%d: [INFO] ", source, line);\
-                fprintf(stderr, __VA_ARGS__);\
-            }\
-        } break;\
-        case LOG_WARN: {\
-            if (bk.verbose) {\
-                fprintf(stderr, "%s:%d: [WARN] ", source, line);\
-            } else {\
-                fprintf(stderr, "[WARN] ");\
-            }\
-            fprintf(stderr, __VA_ARGS__);\
-        } break;\
-        case LOG_ERROR: {\
-            if (bk.verbose) {\
-                fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
-            } else {\
-                fprintf(stderr, "[ERROR] ");\
-            }\
-            fprintf(stderr, __VA_ARGS__);\
-        } break;\
-        default: abort();\
-        }\
-    }\
-} while(0)
-
-#define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
-
-typedef enum {
-    LOG_INFO,
-    LOG_WARN,
-    LOG_ERROR,
-} Log_Level;
-
 typedef struct {
     char* items;
     size_t len;
@@ -175,6 +132,83 @@ typedef struct {
     size_t cap;
 } CCompounds;
 
+typedef struct {
+    size_t (*gen_dump_decl)(String* book_buf, CCompound* ty, const char* dst_type);
+    size_t (*gen_parse_decl)(String* book_buf, CCompound* ty);
+    void (*gen_dump_impl)(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+    void (*gen_parse_impl)(String* book_buf, CCompound* ty);
+    const char* derive_attr;
+    const char* name;
+} Schema;
+
+typedef struct {
+    Schema* items;
+    size_t len;
+    size_t cap;
+} Schemas;
+
+typedef struct {
+    char* full;
+    char* name;
+    time_t sys_modif;
+    time_t last_analyzed;
+} Entry;
+
+typedef struct {
+    Entry* items;
+    size_t len;
+    size_t cap;
+} Entries;
+
+typedef struct {
+    BkConfig conf;
+    Entries entries;
+    Schemas schemas;
+} BkState;
+
+static BkState bk = {0};
+static char tmp_str[4096];
+#define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
+#define fmt(...) strdup(tfmt(__VA_ARGS__))
+
+#define bk_log_loc(level, source, line, ...) do {\
+    if (!bk.conf.silent) {\
+        switch (level) {\
+        case LOG_INFO: {\
+            if (bk.conf.verbose) {\
+                fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+                fprintf(stderr, __VA_ARGS__);\
+            }\
+        } break;\
+        case LOG_WARN: {\
+            if (bk.conf.verbose) {\
+                fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+            } else {\
+                fprintf(stderr, "[WARN] ");\
+            }\
+            fprintf(stderr, __VA_ARGS__);\
+        } break;\
+        case LOG_ERROR: {\
+            if (bk.conf.verbose) {\
+                fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+            } else {\
+                fprintf(stderr, "[ERROR] ");\
+            }\
+            fprintf(stderr, __VA_ARGS__);\
+        } break;\
+        default: abort();\
+        }\
+    }\
+} while(0)
+
+#define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
+
+typedef enum {
+    LOG_INFO,
+    LOG_WARN,
+    LOG_ERROR,
+} Log_Level;
+
 #define push_da(arr, item) do {                                                     \
     if ((arr)->len + 1 >= (arr)->cap) {                                             \
         if ((arr)->cap > 0) {                                                       \
@@ -206,55 +240,31 @@ typedef struct {
 } while(0)
 #endif // __BK_GEN_EXT_DEFINITIONS
 
-typedef struct {
-    size_t (*gen_dump_decl)(String* book_buf, CCompound* ty, const char* dst_type);
-    size_t (*gen_parse_decl)(String* book_buf, CCompound* ty);
-    void (*gen_dump_impl)(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
-    void (*gen_parse_impl)(String* book_buf, CCompound* ty);
-    const char* derive_attr;
-} Schema;
-
-typedef struct {
-    Schema* items;
-    size_t len;
-    size_t cap;
-} Schemas;
-
-typedef struct {
-    char* full;
-    char* name;
-    time_t sys_modif;
-    time_t last_analyzed;
-} Entry;
-
-typedef struct {
-    Entry* items;
-    size_t len;
-    size_t cap;
-} Entries;
-
 // General utility functions
-bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line);
+static bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line);
 #define read_entire_file(file_name, dst) read_entire_file_loc(file_name, dst, __FILE__, __LINE__)
-bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
+static bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
-unsigned long djb2(const char* s);
-bool entry_from_file(const char* file_name, Entry* out);
+static unsigned long djb2(const char* s);
+static bool entry_from_file(const char* file_name, Entry* out);
 
 // Cleanup functions
-void free_ccompund(CCompound cc);
-void free_field(Field f);
-void free_ctype(CType ct);
-void free_entry(Entry e);
+static void free_ccompund(CCompound cc);
+static void free_field(Field f);
+static void free_ctype(CType ct);
+static void free_entry(Entry e);
 
 // Parsing C code
-bool va_get_expect_ids(stb_lexer* lex, va_list args);
-bool va_get_expect_tokens(stb_lexer* lex, va_list args);
-bool peek_ids(stb_lexer* lex, ...);
-bool peek_tokens(stb_lexer* lex, ...);
-bool get_expect_tokens(stb_lexer* lex, ...);
-bool get_expect_ids(stb_lexer* lex,...);
-void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all);
+static bool va_get_expect_ids(stb_lexer* lex, va_list args);
+static bool va_get_expect_tokens(stb_lexer* lex, va_list args);
+static bool peek_ids(stb_lexer* lex, ...);
+static bool peek_tokens(stb_lexer* lex, ...);
+static bool get_expect_tokens(stb_lexer* lex, ...);
+static bool get_expect_ids(stb_lexer* lex,...);
+static void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all);
+
+// Command line parsing
+static char* parse_list(char** src, char sep, size_t* entry_len);
 
 // Code generation
 size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* disable_dump_macro);
@@ -305,6 +315,7 @@ bool watch_delay_cmd(int* i, int argc, char** argv);
 bool include_file_cmd(int* i, int argc, char** argv);
 bool include_directory_cmd(int* i, int argc, char** argv);
 bool output_directory_cmd(int* i, int argc, char** argv);
+bool schemas_cmd(int* i, int argc, char** argv);
 bool silent_cmd(int* i, int argc, char** argv);
 bool verbose_cmd(int* i, int argc, char** argv);
 bool enable_warn_cmd(int* i, int argc, char** argv);
@@ -339,7 +350,7 @@ static Command commands[] = {
         .name = "config-path",
         .flag = "--config-path",
         .usage = "--config-path <file>",
-        .desc = "Changes the path that will be used to load the configuration file (default value is './bk.conf')",
+        .desc = "Changes the path that will be used to load the configuration file (default value is './bk.conf.conf')",
         .exec_c = config_path_cmd
     },
     {
@@ -390,6 +401,13 @@ static Command commands[] = {
         .usage = "-o <dir>",
         .desc = "All generated files will be placed inside the provided directory",
         .exec_c = output_directory_cmd
+    },
+    {
+        .name = "schemas",
+        .flag = "--schemas",
+        .usage = "--schemas",
+        .desc = "Displays a list of loaded schemas",
+        .exec_c = schemas_cmd
     },
     {
         .name = "silent",
@@ -492,10 +510,11 @@ static Command commands[] = {
 };
 const static size_t commands_count = sizeof commands / sizeof *commands;
 
-#define bk_printf(...) (bk.silent ? 0 : printf(__VA_ARGS__))
+#define bk_printf(...) (bk.conf.silent ? 0 : printf(__VA_ARGS__))
 
 static char* config_path = "./.bk.conf";
-static Entries entries = {0};
+#define BK_FILE_EXT ".bk.h"
+#define BK_FILE_EXT_LEN 5
 
 #define ret_clean(i)\
 do {\
@@ -516,7 +535,6 @@ int main(int argc, char** argv) {
     // before they were *declared* by goto'ing to `__bk_cleanup` inside `ret_clean`
     CCompounds types = {0};
     String file_buf = {0};
-    Schemas schemas = {0};
     
     int ret_val = 0;
 
@@ -525,17 +543,19 @@ int main(int argc, char** argv) {
         .gen_parse_decl = gen_json_parse_decl, 
         .gen_dump_impl = gen_json_dump_impl, 
         .gen_parse_impl = gen_json_parse_impl, 
-        .derive_attr = "derive_json"
+        .derive_attr = "derive_json",
+        .name = "json"
     };
     Schema debug = {
         .gen_dump_decl = gen_debug_dump_decl, 
         .gen_parse_decl = NULL, 
         .gen_dump_impl = gen_debug_dump_impl, 
         .gen_parse_impl = NULL, 
-        .derive_attr = "derive_debug"
+        .derive_attr = "derive_debug",
+        .name = "debug"
     };
-    push_da(&schemas, json);
-    push_da(&schemas, debug);
+    push_da(&bk.schemas, json);
+    push_da(&bk.schemas, debug);
 
     #ifdef BK_ENABLE_BK_CONF_GEN
     Schema bkconf = {  
@@ -543,40 +563,41 @@ int main(int argc, char** argv) {
         .gen_parse_decl = gen_bkconf_parse_decl, 
         .gen_dump_impl = NULL, 
         .gen_parse_impl = gen_bkconf_parse_impl, 
-        .derive_attr = "derive_bkconf"
+        .derive_attr = "derive_bkconf",
+        .name = "bkconf"
     };
-    push_da(&schemas, bkconf);
+    push_da(&bk.schemas, bkconf);
     #endif // BK_ENABLE_BK_CONF_GEN
 
     // For schema extensions
     #ifdef BK_ADD_SCHEMAS
     do {
-        BK_ADD_SCHEMAS(schemas)
+        BK_ADD_SCHEMAS((bk.schemas))
     } while(0);
     #endif
 
-    bk.output_mode = "mirror";
-    bk.gen_fmt_macro = "BK_FMT";
-    bk.gen_implementation_macro = "BK_IMPLEMENTATION";
-    bk.gen_fmt_dst_macro = "BK_FMT_DST_t";
-    bk.disable_dump_macro = "BK_DISABLE_DUMP";
-    bk.disable_parse_macro = "BK_DISABLE_PARSE";
-    bk.offset_type_macro = "BK_OFFSET_t";
-    bk.type_disable_macro_prefix = "BK_DISABLE_";
+    bk.conf.output_mode = "mirror";
+    bk.conf.gen_fmt_macro = "BK_FMT";
+    bk.conf.gen_implementation_macro = "BK_IMPLEMENTATION";
+    bk.conf.gen_fmt_dst_macro = "BK_FMT_DST_t";
+    bk.conf.disable_dump_macro = "BK_DISABLE_DUMP";
+    bk.conf.disable_parse_macro = "BK_DISABLE_PARSE";
+    bk.conf.offset_type_macro = "BK_OFFSET_t";
+    bk.conf.type_disable_macro_prefix = "BK_DISABLE_";
 
-    bk.silent = false;
-    bk.verbose = false;
-    bk.warn_no_include = true;
-    bk.warn_no_output = true;
-    bk.warn_unknown_attr = true;
-    bk.derive_all = false;
-    bk.watch_mode = false;
-    bk.watch_delay = 5;
-    bk.include_dir = NULL;
-    bk.output_dir = NULL;
+    bk.conf.silent = false;
+    bk.conf.verbose = false;
+    bk.conf.warn_no_include = true;
+    bk.conf.warn_no_output = true;
+    bk.conf.warn_unknown_attr = true;
+    bk.conf.derive_all = false;
+    bk.conf.watch_mode = false;
+    bk.conf.watch_delay = 5;
+    bk.conf.include_dir = NULL;
+    bk.conf.output_dir = NULL;
 
     #ifdef DEBUG
-    bk.silent = true;
+    bk.conf.silent = true;
     #endif // DEBUG
 
     int config_cmd_index = -1;
@@ -605,7 +626,7 @@ int main(int argc, char** argv) {
             String conf_contents = {0};
             if (read_entire_file(config_path, &conf_contents)) {
                 found_config = true;
-                parse_bkconf_BkConfig(conf_contents.items, conf_contents.len, &bk);
+                parse_bkconf_BkConfig(conf_contents.items, conf_contents.len, &bk.conf);
             }
         } else if (custom_config) {
             bk_log(LOG_ERROR, "Couldn't open file '%s': %s\n", config_path, strerror(errno));
@@ -630,97 +651,83 @@ int main(int argc, char** argv) {
         }
     }
    
-    if (bk.include_files != NULL) {
-        size_t name_start = 0;
-        size_t list_len = strlen(bk.include_files);
+    if (bk.conf.include_files != NULL) {
+        // size_t name_start = 0;
+        size_t list_len = strlen(bk.conf.include_files);
         if (list_len == 0) {
             bk_log(LOG_ERROR, "Include file list in '%s' is empty.\n", config_path);
             ret_clean(1);
         }
-        for (size_t i = 0; i < list_len; ++i) {
-            if (bk.include_files[i] == ',') {
-                if (i > 0) {
-                    Entry e = {0};
-                    if (!entry_from_file(tfmt("%.*s", (int)(i - name_start), bk.include_files + name_start), &e)) {
-                        ret_clean(1);
-                    }
-                    push_da(&entries, e);
-                } else {
-                    bk_log(LOG_ERROR, "Include file list in '%s' starts with comma (',').\n", config_path);
-                    ret_clean(1);
-                }
-                if (i + 1 >= list_len) {
-                    bk_log(LOG_ERROR, "Include file list in '%s' contains a trailing comma (',').\n", config_path);
-                    ret_clean(1);
-                }
-                name_start = i + 1;
-            }
+        if (bk.conf.include_files[0] == ',') {
+            bk_log(LOG_ERROR, "Include file list in '%s' starts with comma (',')\n", config_path);
+            ret_clean(1);
         }
-        if (list_len - name_start > 0) {
+        char* cursor = bk.conf.include_files;
+        size_t entry_len = 0;
+
+        for (char* ent; (ent = parse_list(&cursor, ',', &entry_len));) {
             Entry e = {0};
-            if (!entry_from_file(tfmt("%.*s", (int)(list_len - name_start), bk.include_files + name_start), &e)) {
+            if (!entry_from_file(tfmt("%.*s", (int)entry_len, ent), &e)) {
                 ret_clean(1);
             }
-            push_da(&entries, e);
+            push_da(&bk.entries, e);
         }
     }
 
-    if (bk.include_dir == NULL && entries.len == 0) {
-        if (bk.warn_no_include) bk_log(LOG_WARN, "No files were included, exiting...\n");
+    if (bk.conf.include_dir == NULL && bk.entries.len == 0) {
+        if (bk.conf.warn_no_include) bk_log(LOG_WARN, "No files were included, exiting...\n");
         ret_clean(1);
     }
-    if (bk.output_dir == NULL) {
-        if (bk.warn_no_output) bk_log(LOG_WARN, "No output path set, exiting...\n");
+    if (bk.conf.output_dir == NULL) {
+        if (bk.conf.warn_no_output) bk_log(LOG_WARN, "No output path set, exiting...\n");
         ret_clean(1);
     }
     
     {
-        if (bk.include_dir != NULL) {
-            size_t in_len = strlen(bk.include_dir);
-            if (bk.include_dir[in_len - 1] == '/') bk.include_dir[in_len - 1] = 0;
+        if (bk.conf.include_dir != NULL) {
+            size_t in_len = strlen(bk.conf.include_dir);
+            if (bk.conf.include_dir[in_len - 1] == '/') bk.conf.include_dir[in_len - 1] = 0;
         }
-        size_t out_len = strlen(bk.output_dir);
-        if (bk.output_dir[out_len - 1] == '/') bk.output_dir[out_len - 1] = 0;
+        size_t out_len = strlen(bk.conf.output_dir);
+        if (bk.conf.output_dir[out_len - 1] == '/') bk.conf.output_dir[out_len - 1] = 0;
     }
 
     OutputMode output_mode;
-    if (strcmp(bk.output_mode, "mirror") == 0) {
+    if (strcmp(bk.conf.output_mode, "mirror") == 0) {
         output_mode = O_MIRROR;
-    } else if (strcmp(bk.output_mode, "dir") == 0) {
+    } else if (strcmp(bk.conf.output_mode, "dir") == 0) {
         output_mode = O_DIR;
     } else {
-        bk_printf("Unknown output mode '%s', exiting...\n", bk.output_mode);
+        bk_printf("Unknown output mode '%s', exiting...\n", bk.conf.output_mode);
         ret_clean(1);
     }
-
-    bk_log(LOG_INFO, "Number of registered schemas: %lu\n", schemas.len);
 
     String book_buf = {0};
     print_string(&book_buf, "#ifndef __DERIVES_H__\n");
     print_string(&book_buf, "#define __DERIVES_H__\n");
     print_string(&book_buf, "#define derive_all(...)\n");
-    for (size_t i = 0; i < schemas.len; ++i) {
-        print_string(&book_buf, "#define %s(...)\n", schemas.items[i].derive_attr);
+    for (size_t i = 0; i < bk.schemas.len; ++i) {
+        print_string(&book_buf, "#define %s(...)\n", bk.schemas.items[i].derive_attr);
     }
     print_string(&book_buf, "#endif // __DERIVES_H__\n");
-    write_entire_file(tfmt("%s/derives.h", bk.output_dir), &book_buf);
+    write_entire_file(tfmt("%s/derives.h", bk.conf.output_dir), &book_buf);
 
-    if (bk.include_dir != NULL) {
-        DIR* input_dir = opendir(bk.include_dir); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
+    if (bk.conf.include_dir != NULL) {
+        DIR* input_dir = opendir(bk.conf.include_dir); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
         if (!input_dir) {
-            bk_log(LOG_ERROR, "Couldn't open directory '%s': %s\n", bk.include_dir, strerror(errno));
+            bk_log(LOG_ERROR, "Couldn't open directory '%s': %s\n", bk.conf.include_dir, strerror(errno));
             ret_clean(1);
         }
         for (struct dirent* ent = readdir(input_dir); ent; ent = readdir(input_dir)) {
             if (ent->d_type == DT_REG) {
                 size_t name_len = strlen(ent->d_name);
-                if (name_len > 5 && strcmp(ent->d_name + name_len - 5, ".bk.h") == 0) continue;
+                if (name_len > BK_FILE_EXT_LEN && strcmp(ent->d_name + name_len - BK_FILE_EXT_LEN, BK_FILE_EXT) == 0) continue;
                 if (name_len < 2) continue;
                 if (
                     strcmp(ent->d_name + name_len - 2, ".c") == 0 ||
                     strcmp(ent->d_name + name_len - 2, ".h") == 0
                 ) {
-                    char* in_file = fmt("%s/%s", bk.include_dir, ent->d_name); // alloc
+                    char* in_file = fmt("%s/%s", bk.conf.include_dir, ent->d_name); // alloc
                     struct stat s = {0};
                     stat(in_file, &s);
 
@@ -730,7 +737,7 @@ int main(int argc, char** argv) {
                         .sys_modif = s.st_mtim.tv_sec,
                         .last_analyzed = 0
                     };
-                    push_da(&entries, e);
+                    push_da(&bk.entries, e);
                 }
             }
         }
@@ -745,10 +752,10 @@ int main(int argc, char** argv) {
     // might want to use something like `poll` to detect file events?
     do {
         t = time(NULL);
-        if (t - current_iter < (time_t)bk.watch_delay) continue;
+        if (t - current_iter < (time_t)bk.conf.watch_delay) continue;
         current_iter = t;
-        for (size_t e_i = 0; e_i < entries.len; ++e_i) {
-            Entry* in_file = entries.items + e_i;
+        for (size_t e_i = 0; e_i < bk.entries.len; ++e_i) {
+            Entry* in_file = bk.entries.items + e_i;
             {
                 struct stat s = {0};
                 stat(in_file->full, &s);
@@ -764,7 +771,7 @@ int main(int argc, char** argv) {
                 // `types` repeatedly causes performance issues.
                 for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
                 types.len = 0;
-                analyze_file(schemas, file_buf, &types, bk.derive_all);
+                analyze_file(bk.schemas, file_buf, &types, bk.conf.derive_all);
                 bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
                 book_buf.len = 0;
                 current_iter = time(NULL);
@@ -772,53 +779,53 @@ int main(int argc, char** argv) {
                 if (types.len > 0) {
                     print_string(&book_buf, "#ifndef __BK_%lu_%lu_H__ // Generated from: %s\n", in_hash, file_idx, in_file->full);
                     print_string(&book_buf, "#define __BK_%lu_%lu_H__\n", in_hash, file_idx);
-                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_dst_macro);
-                    print_string(&book_buf, "#define %s FILE*\n", bk.gen_fmt_dst_macro);
-                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_dst_macro);
-                    print_string(&book_buf, "#ifndef %s\n", bk.gen_fmt_macro);
-                    print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", bk.gen_fmt_macro);
-                    print_string(&book_buf, "#endif // %s\n", bk.gen_fmt_macro);
-                    print_string(&book_buf, "#ifndef %s\n", bk.offset_type_macro);
-                    print_string(&book_buf, "#define %s size_t\n", bk.offset_type_macro);
-                    print_string(&book_buf, "#endif // %s\n", bk.offset_type_macro);
+                    print_string(&book_buf, "#ifndef %s\n", bk.conf.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#define %s FILE*\n", bk.conf.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.conf.gen_fmt_dst_macro);
+                    print_string(&book_buf, "#ifndef %s\n", bk.conf.gen_fmt_macro);
+                    print_string(&book_buf, "#define %s(...) offset += fprintf(dst, __VA_ARGS__)\n", bk.conf.gen_fmt_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.conf.gen_fmt_macro);
+                    print_string(&book_buf, "#ifndef %s\n", bk.conf.offset_type_macro);
+                    print_string(&book_buf, "#define %s size_t\n", bk.conf.offset_type_macro);
+                    print_string(&book_buf, "#endif // %s\n", bk.conf.offset_type_macro);
                     size_t num_decls = 0;
                     for (size_t i = 0; i < types.len; ++i) {
-                        print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
-                        if (!bk.disable_dump) {
-                            num_decls += gen_dump_decl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.disable_dump_macro);
+                        print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
+                        if (!bk.conf.disable_dump) {
+                            num_decls += gen_dump_decl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.disable_dump_macro);
                         }
-                        if (!bk.disable_parse) {
-                            num_decls += gen_parse_decl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                        if (!bk.conf.disable_parse) {
+                            num_decls += gen_parse_decl(bk.schemas, &book_buf, types.items + i, bk.conf.disable_parse_macro);
                         }
-                        print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                        print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
                     }
                     if (num_decls > 0) {
-                        print_string(&book_buf, "\n#ifdef %s\n", bk.gen_implementation_macro);
+                        print_string(&book_buf, "\n#ifdef %s\n", bk.conf.gen_implementation_macro);
                         for (size_t i = 0; i < types.len; ++i) {
                             if (types.items[i].derived_schemas != 0) {
-                                print_string(&book_buf, "\n#ifndef %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                                print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
                             }
-                            if (!bk.disable_dump) {
-                                gen_dump_impl(schemas, &book_buf, types.items + i, bk.gen_fmt_dst_macro, bk.gen_fmt_macro, bk.disable_dump_macro);
+                            if (!bk.conf.disable_dump) {
+                                gen_dump_impl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro, bk.conf.disable_dump_macro);
                             }
-                            if (!bk.disable_parse) {
-                                gen_parse_impl(schemas, &book_buf, types.items + i, bk.disable_parse_macro);
+                            if (!bk.conf.disable_parse) {
+                                gen_parse_impl(bk.schemas, &book_buf, types.items + i, bk.conf.disable_parse_macro);
                             }
                             if (types.items[i].derived_schemas != 0) {
-                                print_string(&book_buf, "\n#endif // %s%s\n", bk.type_disable_macro_prefix, types.items[i].name);
+                                print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
                             }
                         }
-                        print_string(&book_buf, "\n#endif // %s\n", bk.gen_implementation_macro);
+                        print_string(&book_buf, "\n#endif // %s\n", bk.conf.gen_implementation_macro);
 
                         push_da(&book_buf, '\n');
                         print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
                         char* out_file = NULL;
                         switch (output_mode) {
                         case O_MIRROR: {
-                            out_file = tfmt("%s.bk.h", in_file->full);
+                            out_file = tfmt("%s"BK_FILE_EXT, in_file->full);
                         } break;
                         case O_DIR: {
-                            out_file = tfmt("%s/%s.bk.h", bk.output_dir, in_file->name);
+                            out_file = tfmt("%s/%s"BK_FILE_EXT, bk.conf.output_dir, in_file->name);
                         } break;
                         }
                         if (out_file) write_entire_file(out_file, &book_buf);
@@ -827,7 +834,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
-    } while(bk.watch_mode);
+    } while(bk.conf.watch_mode);
 
     __bk_cleanup:
     if (types.items != NULL) {
@@ -836,17 +843,17 @@ int main(int argc, char** argv) {
     }
 
     if (file_buf.items != NULL) free(file_buf.items);
-    if (schemas.items != NULL) free(schemas.items);
+    if (bk.schemas.items != NULL) free(bk.schemas.items);
 
-    if (entries.items != NULL) {
-        for (size_t i = 0; i < entries.len; ++i) free_entry(entries.items[i]);
-        free(entries.items);
+    if (bk.entries.items != NULL) {
+        for (size_t i = 0; i < bk.entries.len; ++i) free_entry(bk.entries.items[i]);
+        free(bk.entries.items);
     }
     
     return ret_val;
 }
 
-bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line) {
+static bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line) {
     struct stat s = {0};
     stat(file_name, &s);
     size_t f_len = s.st_size / sizeof(char);
@@ -876,7 +883,7 @@ bool read_entire_file_loc(const char* file_name, String* dst, const char* source
     return true;
 }
 
-bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line) {
+static bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line) {
     FILE* f = fopen(file_name, "w");
     if (f == NULL) {
         bk_log_loc(LOG_ERROR, source_file, source_line, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
@@ -894,13 +901,13 @@ bool write_entire_file_loc(const char* file_name, String* src, const char* sourc
     return true;
 }
 
-unsigned long djb2(const char* s) {
+static unsigned long djb2(const char* s) {
     unsigned long hash = 5381;
     for (char c; (c = *s++);) hash = ((hash << 5) + hash) + (unsigned long) c;
     return hash;
 }
 
-bool entry_from_file(const char* file_name, Entry* out) {
+static bool entry_from_file(const char* file_name, Entry* out) {
     char* real = realpath(file_name, NULL); // alloc
     if (real == NULL) {
         bk_log(LOG_ERROR, "File '%s' doesn't exist: %s\n", file_name, strerror(errno));
@@ -917,27 +924,27 @@ bool entry_from_file(const char* file_name, Entry* out) {
 }
 
 // Cleanup functions
-void free_ccompund(CCompound cc) {        
+static void free_ccompund(CCompound cc) {        
     for (size_t i = 0; i < cc.fields.len; ++i) {
         free_field(cc.fields.items[i]);
     }
 }
 
-void free_field(Field f) {
+static void free_field(Field f) {
     free(f.name);
     free_ctype(f.type);
 }
 
-void free_ctype(CType ct) {
+static void free_ctype(CType ct) {
     if (ct.kind == CEXTERNAL) free(ct.name);
 }
 
-void free_entry(Entry e) {
+static void free_entry(Entry e) {
     free(e.full);
     free(e.name);
 }
 
-bool va_get_expect_ids(stb_lexer* lex, va_list args) {
+static bool va_get_expect_ids(stb_lexer* lex, va_list args) {
     const char* expected = va_arg(args, const char*);
     for (; expected != NULL; expected = va_arg(args, const char*)) {
         stb_c_lexer_get_token(lex);
@@ -947,7 +954,7 @@ bool va_get_expect_ids(stb_lexer* lex, va_list args) {
     return true;
 }
 
-bool va_get_expect_tokens(stb_lexer* lex, va_list args) {
+static bool va_get_expect_tokens(stb_lexer* lex, va_list args) {
     int expected = va_arg(args, int);
     for (; expected > -1 ; expected = va_arg(args, int)) {
         stb_c_lexer_get_token(lex);
@@ -957,7 +964,7 @@ bool va_get_expect_tokens(stb_lexer* lex, va_list args) {
 }
 
 /// Arguments should be of type `const char*` and end with NULL
-bool peek_ids(stb_lexer* lex, ...) {
+static bool peek_ids(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     char* pp = lex->parse_point;
@@ -968,7 +975,7 @@ bool peek_ids(stb_lexer* lex, ...) {
 }
 
 /// Arguments should be of type `int` and end with -1
-bool peek_tokens(stb_lexer* lex, ...) {
+static bool peek_tokens(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     char* pp = lex->parse_point;
@@ -979,7 +986,7 @@ bool peek_tokens(stb_lexer* lex, ...) {
 }
 
 /// Arguments should be of type `int` and end with -1
-bool get_expect_tokens(stb_lexer* lex, ...) {
+static bool get_expect_tokens(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     bool res = va_get_expect_tokens(lex, args);
@@ -988,7 +995,7 @@ bool get_expect_tokens(stb_lexer* lex, ...) {
 }
 
 /// Arguments should be of type `const char*` and end with NULL
-bool get_expect_ids(stb_lexer* lex, ...) {
+static bool get_expect_ids(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     bool res = va_get_expect_ids(lex, args);
@@ -996,7 +1003,7 @@ bool get_expect_ids(stb_lexer* lex, ...) {
     return res;
 }
 
-void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all) {
+static void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all) {
     static char string_store[4096];
     stb_lexer lex = {0};
     stb_c_lexer_init(&lex, content.items, content.items + content.len, string_store, sizeof string_store);
@@ -1113,7 +1120,7 @@ void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_
 
                 stb_c_lexer_get_token(&lex); // derive_schema
                 if (!matched) {
-                    if (bk.warn_unknown_attr) bk_log(LOG_WARN, "Found unknown attribute '%s' while parsing type '%s'\n", lex.string, strct.name);
+                    if (bk.conf.warn_unknown_attr) bk_log(LOG_WARN, "Found unknown attribute '%s' while parsing type '%s'\n", lex.string, strct.name);
                 }
                 stb_c_lexer_get_token(&lex); // (
                 stb_c_lexer_get_token(&lex); // )
@@ -1193,6 +1200,7 @@ size_t gen_json_parse_decl(String* book_buf, CCompound* ty) {
 void gen_json_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
     print_string(book_buf, "void dump_json_%s(%s* item, %s dst) {\n", ty->name, ty->name, dst_type);
     print_string(book_buf, "    BK_OFFSET_t offset = {0};\n");
+    print_string(book_buf, "    (void)offset; // suppress warnings\n");
     print_string(book_buf, "    %s(\"{\");\n", fmt_macro);
     for (size_t j = 0; j < ty->fields.len; ++j) {
         Field* f = ty->fields.items + j;
@@ -1313,6 +1321,7 @@ size_t gen_debug_dump_decl(String* book_buf, CCompound* ty, const char* dst_type
 void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
     print_string(book_buf, "void __indent_dump_debug_%s(%s* item, %s dst, int indent) {\n", ty->name, ty->name, dst_type);
     print_string(book_buf, "    BK_OFFSET_t offset = {0};\n");
+    print_string(book_buf, "    (void)offset; // suppress warnings\n");
     print_string(book_buf, "    %s(\"%s {\\n\");\n", fmt_macro, ty->name);
     for (size_t j = 0; j < ty->fields.len; ++j) {
         Field* f = ty->fields.items + j;
@@ -1376,7 +1385,7 @@ void gen_bkconf_parse_impl(String* book_buf, CCompound* ty) {
     print_string(book_buf, "    const char* name_end = src;\n");
     print_string(book_buf, "    const char* value_start = src;\n");
     print_string(book_buf, "    const char* value_end = src;\n");
-    print_string(book_buf, "    double value_double = 0;\n");
+    print_string(book_buf, "    double value_double = 0; (void)value_double;\n");
     print_string(book_buf, "    long value_int = 0;\n");
     print_string(book_buf, "    bool value_bool = false;\n");
     print_string(book_buf, "    for (const char* cur = src; cur < (src + len); ++cur) {\n");
@@ -1476,7 +1485,7 @@ bool config_path_cmd(int* i, int argc, char** argv) {
 
 bool output_mode_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.output_mode = argv[*i];
+        bk.conf.output_mode = argv[*i];
         return true;
     }
 
@@ -1487,7 +1496,7 @@ bool watch_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk.watch_mode = true;
+    bk.conf.watch_mode = true;
     return true;
 }
 
@@ -1496,7 +1505,7 @@ bool watch_delay_cmd(int* i, int argc, char** argv) {
         char* endptr = NULL;
         long val = strtol(argv[*i], &endptr, 10);
         if (endptr && *endptr == 0) {
-            bk.watch_delay = val;
+            bk.conf.watch_delay = val;
             return true;
         }
         return false;
@@ -1504,13 +1513,12 @@ bool watch_delay_cmd(int* i, int argc, char** argv) {
     return false;
 }
 
-// NOTE: Mutates global `entries` dynamic array
 bool include_file_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         char* ent = argv[*i];
         Entry e = {0};
         if (!entry_from_file(ent, &e)) return false; // alloc
-        push_da(&entries, e);
+        push_da(&bk.entries, e);
         return true;
     }
     return false;
@@ -1518,7 +1526,7 @@ bool include_file_cmd(int* i, int argc, char** argv) {
 
 bool include_directory_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.include_dir = argv[*i];
+        bk.conf.include_dir = argv[*i];
         return true;
     }
     return false;
@@ -1526,17 +1534,38 @@ bool include_directory_cmd(int* i, int argc, char** argv) {
 
 bool output_directory_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.output_dir = argv[*i];
+        bk.conf.output_dir = argv[*i];
         return true;
     }
     return false;
+}
+
+bool schemas_cmd(int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    if (bk.schemas.len == 0) {
+        bk_printf("No schemas were loaded.\n");
+        return true;
+    } else {
+        bk_printf("Loaded schemas: ");
+    }
+    for (size_t i = 0; i < bk.schemas.len; ++i) {
+        if (i == 0) {
+            bk_printf("%s", bk.schemas.items[i].name);
+        } else {
+            bk_printf(", %s", bk.schemas.items[i].name);
+        }
+    }
+    bk_printf("\n");
+    return true;
 }
 
 bool silent_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk.silent = true;
+    bk.conf.silent = true;
     return true;
 }
 
@@ -1544,7 +1573,7 @@ bool verbose_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk.verbose = true;
+    bk.conf.verbose = true;
     return true;
 }
 
@@ -1552,13 +1581,13 @@ bool enable_warn_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         char* w = argv[*i];
         if (strcmp(w, WARN_NO_INCLUDE) == 0) {
-            bk.warn_no_include = true;
+            bk.conf.warn_no_include = true;
             return true;
         } else if (strcmp(w, WARN_NO_OUTPUT) == 0) {
-            bk.warn_no_output = true;
+            bk.conf.warn_no_output = true;
             return true;
         } else if (strcmp(w, WARN_UNKNOWN_ATTR) == 0) {
-            bk.warn_unknown_attr = true;
+            bk.conf.warn_unknown_attr = true;
             return true;
         } else {
             return false;
@@ -1572,13 +1601,13 @@ bool disable_warn_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         char* w = argv[*i];
         if (strcmp(w, WARN_NO_INCLUDE) == 0) {
-            bk.warn_no_include = false;
+            bk.conf.warn_no_include = false;
             return true;
         } else if (strcmp(w, WARN_NO_OUTPUT) == 0) {
-            bk.warn_no_output = false;
+            bk.conf.warn_no_output = false;
             return true;
         } else if (strcmp(w, WARN_UNKNOWN_ATTR) == 0) {
-            bk.warn_unknown_attr = false;
+            bk.conf.warn_unknown_attr = false;
             return true;
         } else {
             return false;
@@ -1592,13 +1621,13 @@ bool derive_all_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk.derive_all = true;
+    bk.conf.derive_all = true;
     return true;
 }
 
 bool gen_impl_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.gen_implementation_macro = argv[*i];
+        bk.conf.gen_implementation_macro = argv[*i];
         return true;
     }
     return false;
@@ -1606,7 +1635,7 @@ bool gen_impl_cmd(int* i, int argc, char** argv) {
 
 bool gen_fmt_dst_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.gen_fmt_dst_macro = argv[*i];
+        bk.conf.gen_fmt_dst_macro = argv[*i];
         return true;
     }
     return false;
@@ -1614,7 +1643,7 @@ bool gen_fmt_dst_cmd(int* i, int argc, char** argv) {
 
 bool gen_fmt_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.gen_fmt_macro = argv[*i];
+        bk.conf.gen_fmt_macro = argv[*i];
         return true;
     }
     return false;
@@ -1622,7 +1651,7 @@ bool gen_fmt_cmd(int* i, int argc, char** argv) {
 
 bool set_disable_dump_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.disable_dump_macro = argv[*i];
+        bk.conf.disable_dump_macro = argv[*i];
         return true;
     }
     return false;
@@ -1630,7 +1659,7 @@ bool set_disable_dump_cmd(int* i, int argc, char** argv) {
 
 bool set_disable_parse_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.disable_parse_macro = argv[*i];
+        bk.conf.disable_parse_macro = argv[*i];
         return true;
     }
     return false;
@@ -1638,7 +1667,7 @@ bool set_disable_parse_cmd(int* i, int argc, char** argv) {
 
 bool offset_type_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
-        bk.offset_type_macro = argv[*i];
+        bk.conf.offset_type_macro = argv[*i];
         return true;
     }
     return false;
@@ -1648,7 +1677,7 @@ bool disable_dump_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk.disable_dump = true;
+    bk.conf.disable_dump = true;
     return true;
 }
 
@@ -1656,8 +1685,29 @@ bool disable_parse_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
     (void)argv;
-    bk.disable_parse = true;
+    bk.conf.disable_parse = true;
     return true;
+}
+
+static char* parse_list(char** src, char sep, size_t* entry_len) {
+    if (src == NULL || *src == NULL || **src == 0) return NULL;
+
+    if (**src == sep) return NULL;
+
+    char* begin = *src;
+    size_t len = strlen(begin);
+    char* end = begin + len;
+    for (;*src < end; (*src)++) {
+        if (**src == ',') {
+            *entry_len = (*src)++ - begin;
+            return begin;
+        }
+    }
+    if (len > 0) {
+        *entry_len = len;
+        return begin;
+    }
+    return NULL;
 }
 
 // Generated code, generated by enabling `BK_ENABLE_BK_CONF_GEN`
@@ -1667,7 +1717,7 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
     const char* name_end = src;
     const char* value_start = src;
     const char* value_end = src;
-    double value_double = 0;
+    double value_double = 0; (void)value_double;
     long value_int = 0;
     bool value_bool = false;
     for (const char* cur = src; cur < (src + len); ++cur) {
