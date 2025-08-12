@@ -1161,7 +1161,7 @@ __BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, boo
                         stb_c_lexer_get_token(&lex); // type name 2
                     } else {
                         // TODO: Report unknown primitive error
-                        bk_log(LOG_ERROR, "TODO: Report unknown primitive error\n");
+                        bk_log(LOG_INFO, "Unknown type while parsing struct, skipping...\n");
                         break;
                     }
                     
@@ -1193,7 +1193,7 @@ __BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, boo
                     }
                 } else {
                     // TODO: Report unknown field error
-                    bk_log(LOG_ERROR, "TODO: Report unknown field error\n");
+                    bk_log(LOG_INFO, "Unknown type while parsing struct, skipping...\n");
                     break;
                 }
                 stb_c_lexer_get_token(&lex); // name
