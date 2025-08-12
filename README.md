@@ -1,5 +1,5 @@
 # bookkeeper
-`bookkeeper` is a C code generation tool that generates boilerplate serialization/deserialization code for your user defined structures.
+`bookkeeper` is a single source file C code generation tool that generates boilerplate serialization/deserialization code for your user defined structures.
 
 `bookkeeper` is heavily inspired by the Rust [`serde`](https://serde.rs/) crate and [this Tsoding stream](https://youtu.be/hnM6aSpWJ8c?si=7WqJW0dy8oaJtdmm).
 
@@ -55,6 +55,9 @@ And this is how you can build it:
 
 # But why?
 As C programmers we find ourselves constantly writing boilerplate code for parsing some config struct, or just simply printing any struct. C lacks the necessary metaprogramming tools to automate the generation of this kind of boilerplate code (unlike more modern languages where you can do `#derive(Debug)` or `deriving Show`). So we either use code generation tools like `bookkeeper` to generate this code, or write it by hand every. single. time. `bookkeeper` aims to be an easy to use, extendible, user friendly, embedded friendly and portable solution to this problem.
+
+>[!WARNING]
+> Although bookkeeper aims to be all of those things, it is still somewhat early in development and the tool itself only supports Linux. The generated code is mostly embedded friendly and portable, though.
 
 # Table of Contents
 This README contains both basic examples and general documentation for `bookkeeper` and thus is admittedly somewhat lengthy, so you can use this Table of Contents to jump to sections that may interest you (Though it is recommended to at least read the 'Overview' section).
