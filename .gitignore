@@ -3,3 +3,4 @@ gen/
 .clangd
 *.bk.h
 derives.h
+generics.h

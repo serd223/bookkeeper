@@ -29,6 +29,12 @@ typedef struct {
 #include "people.h.bk.h"
 #include "dump_people.c.bk.h"
 
+// If we were using the --disabled option, these would be
+// the definitions we would use.
+// #define BK_ENABLE_json_DUMP
+// #define BK_ENABLE_debug_DUMP
+#include "../gen/generics.h"
+
 int main(void) {
     Person manager_personal = {
         .name = "Gabe Newell",
@@ -47,8 +53,8 @@ int main(void) {
         .salary = 123456789
     };
     printf("[INFO] JSON Output:\n");
-    dump_json_ManagerWithSalary(&manager_with_salary, stdout);
+    dump_json(&manager_with_salary, stdout);
     printf("\n\n[INFO] Debug Output:\n");
-    dump_debug_ManagerWithSalary(&manager_with_salary, stdout);
+    dump_debug(&manager_with_salary, stdout);
     return 0;
 }

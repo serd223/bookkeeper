@@ -36,6 +36,7 @@ DEALINGS IN THE SOFTWARE.
 
 typedef struct {
     char* output_mode;
+    bool generics;
     bool silent;
     bool verbose;
     bool warn_unknown_attr;

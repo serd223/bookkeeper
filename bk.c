@@ -57,6 +57,7 @@ DEALINGS IN THE SOFTWARE.
 
 typedef struct {
     char* output_mode;
+    bool generics;
     bool silent;
     bool verbose;
     bool warn_unknown_attr;
@@ -388,6 +389,7 @@ typedef struct {
 bool help_cmd(int* i, int argc, char** argv);
 bool config_path_cmd(int* i, int argc, char** argv);
 bool output_mode_cmd(int* i, int argc, char** argv);
+bool generics_cmd(int* i, int argc, char** argv);
 bool watch_cmd(int* i, int argc, char** argv);
 bool watch_delay_cmd(int* i, int argc, char** argv);
 bool include_file_cmd(int* i, int argc, char** argv);
@@ -438,6 +440,13 @@ static Command commands[] = {
         .usage = "-om <mirror|dir>",
         .desc = "Sets the preffered output mode. `mirror` puts generated files next to the files they were generated from. `dir` puts all generated files in the specified `output-directory`. (`derives.h` is always placed inside `output-directory`)",
         .exec_c = output_mode_cmd
+    },
+    {
+        .name = "generics",
+        .flag = "--generics",
+        .usage = "--generics",
+        .desc = "Generates generic macros for dump/parse functions. These macros rely on schemas respecting the `dump/parse_$schema$_$type$` standard. The generic macros will be placed inside `output-directory/generics.h`",
+        .exec_c = generics_cmd
     },
     {
         .name = "watch",
@@ -612,6 +621,7 @@ int main(int argc, char** argv) {
     // Declaring resources that will be cleaned up here before declaring
     // `ret_val` to avoid situations where we try to cleanup these resources
     // before they were *declared* by goto'ing to `__bk_cleanup` inside `ret_clean`
+    CCompounds all_types = {0};
     CCompounds types = {0};
     String file_buf = {0};
     
@@ -665,6 +675,7 @@ int main(int argc, char** argv) {
     bk.conf.disable_macro_prefix = "BK_DISABLE_";
     bk.conf.enable_macro_prefix = "BK_ENABLE_";
 
+    bk.conf.generics = false;
     bk.conf.silent = false;
     bk.conf.verbose = false;
     bk.conf.warn_no_include = false;
@@ -836,6 +847,8 @@ int main(int argc, char** argv) {
         t = time(NULL);
         if (t - current_iter < (time_t)bk.conf.watch_delay) continue;
         current_iter = t;
+        for (size_t i = 0; i < all_types.len; ++i) free_ccompund(all_types.items[i]);
+        all_types.len = 0;
         for (size_t e_i = 0; e_i < bk.entries.len; ++e_i) {
             Entry* in_file = bk.entries.items + e_i;
             {
@@ -849,9 +862,9 @@ int main(int argc, char** argv) {
                 file_buf.len = 0;
                 if (!read_entire_file(in_file->full, &file_buf)) continue;
 
-                // NOTE: We might just decide to leak memory if free`ing the contents of
-                // `types` repeatedly causes performance issues.
-                for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
+                for (size_t i = 0; i < types.len; ++i) {
+                    push_da(&all_types, types.items[i]);
+                };
                 types.len = 0;
                 analyze_file(bk.schemas, file_buf, &types, bk.conf.derive_all);
                 bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
@@ -888,6 +901,7 @@ int main(int argc, char** argv) {
                             if (!bk.conf.disable_parse) {
                                 gen_parse_impl(bk.schemas, &book_buf, types.items + i);
                             }
+                            print_string(&book_buf, "\n#define ___BK_INCLUDE_TYPE_%s\n", types.items[i].name);
                         }
                         print_string(&book_buf, "\n#endif // %s\n", bk.conf.gen_implementation_macro);
 
@@ -908,12 +922,114 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        if (bk.conf.generics) {
+            book_buf.len = 0;
+            print_string(&book_buf, "#ifndef __GENERICS_H__\n");
+            print_string(&book_buf, "#define __GENERICS_H__\n");
+            for (size_t i = 0; i < all_types.len; ++i) {
+                const char* t_name = all_types.items[i].name;
+                print_string(&book_buf, "#ifdef ___BK_INCLUDE_TYPE_%s\n", t_name);
+                print_string(&book_buf, "#define ___BK_IF_TYPE_%s(x) x,\n", t_name);
+                print_string(&book_buf, "#else // ___BK_INCLUDE_TYPE_%s\n", t_name);
+                print_string(&book_buf, "#define ___BK_IF_TYPE_%s(x)\n", t_name);
+                print_string(&book_buf, "#endif // ___BK_INCLUDE_TYPE_%s\n", t_name);
+            }
+            for (size_t i = 0; i < bk.schemas.len; ++i) {
+                const char* s_name = bk.schemas.items[i].name;
+
+                // dump guard start
+                if (bk.conf.disabled_by_default) {
+                    print_string(&book_buf, "#if defined(%s"BK_DUMP_UPPER") || defined(%s%s) || defined(%s%s_"BK_DUMP_UPPER")\n",
+                                 bk.conf.enable_macro_prefix,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name
+                    );
+                } else {
+                    print_string(&book_buf, "#ifndef %s"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix);
+                    print_string(&book_buf, "#ifndef %s%s\n", bk.conf.disable_macro_prefix, s_name);
+                    print_string(&book_buf, "#ifndef %s%s_"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix, s_name);
+                }
+
+                // dump code
+                print_string(&book_buf, "#define ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES\\\n", s_name);
+                for (size_t j = 0; j < all_types.len; ++j) {
+                    const char* t_name = all_types.items[j].name;
+                    print_string(&book_buf, "    ___BK_IF_TYPE_%s(%s*: "BK_DUMP_LOWER"_%s_%s)\\\n", t_name, t_name, s_name, t_name);
+                }
+                print_string(&book_buf, "\n#define "BK_DUMP_LOWER"_%s(item, sink)\\\n", s_name);
+                print_string(&book_buf, "_Generic((item), ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES default: NULL)((item), (sink))\n", s_name);
+
+                // dump guard end
+                if (bk.conf.disabled_by_default) {
+                    print_string(&book_buf, "#endif // defined(%s"BK_DUMP_UPPER") || defined(%s%s) || defined(%s%s_"BK_DUMP_UPPER")\n",
+                                 bk.conf.enable_macro_prefix,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name
+                    );
+                } else {
+                    print_string(&book_buf, "#endif // %s%s_"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix, s_name);
+                    print_string(&book_buf, "#endif // %s%s\n", bk.conf.disable_macro_prefix, s_name);
+                    print_string(&book_buf, "#endif // %s"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix);
+                }
+
+                // parse guard start
+                if (bk.conf.disabled_by_default) {
+                    print_string(&book_buf, "#if defined(%s"BK_PARSE_UPPER") || defined(%s%s) || defined(%s%s_"BK_PARSE_UPPER")\n",
+                                 bk.conf.enable_macro_prefix,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name
+                    );
+                } else {
+                    print_string(&book_buf, "#ifndef %s"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix);
+                    print_string(&book_buf, "#ifndef %s%s\n", bk.conf.disable_macro_prefix, s_name);
+                    print_string(&book_buf, "#ifndef %s%s_"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix, s_name);
+                }
+
+                // parse code
+                print_string(&book_buf, "#define ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES\\\n", s_name);
+                for (size_t j = 0; j < all_types.len; ++j) {
+                    const char* t_name = all_types.items[j].name;
+                    print_string(&book_buf, "    ___BK_IF_TYPE_%s(%s*: "BK_PARSE_LOWER"_%s_%s)\\\n", t_name, t_name, s_name, t_name);
+                }
+                print_string(&book_buf, "\n#define "BK_PARSE_LOWER"_%s(item, sink)\\\n", s_name);
+                print_string(&book_buf, "_Generic((item), ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES default: NULL)((item), (sink))\n", s_name);
+
+                // parse guard end
+                if (bk.conf.disabled_by_default) {
+                    print_string(&book_buf, "#endif // defined(%s"BK_PARSE_UPPER") || defined(%s%s) || defined(%s%s_"BK_PARSE_UPPER")\n",
+                                 bk.conf.enable_macro_prefix,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name,
+                                 bk.conf.enable_macro_prefix,
+                                 s_name
+                    );
+                } else {
+                    print_string(&book_buf, "#endif // %s%s_"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix, s_name);
+                    print_string(&book_buf, "#endif // %s%s\n", bk.conf.disable_macro_prefix, s_name);
+                    print_string(&book_buf, "#endif // %s"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix);
+                }
+
+            }
+            print_string(&book_buf, "#endif // __GENERICS_H__\n");
+            write_entire_file(tfmt("%s/generics.h", bk.conf.output_dir), &book_buf);
+        }
     } while(bk.conf.watch_mode);
 
     __bk_cleanup:
     if (types.items != NULL) {
         for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
         free(types.items);
+    }
+
+    if (all_types.items != NULL) {
+        for (size_t i = 0; i < all_types.len; ++i) free_ccompund(all_types.items[i]);
+        free(all_types.items);
     }
 
     if (file_buf.items != NULL) free(file_buf.items);
@@ -1644,6 +1760,14 @@ bool output_mode_cmd(int* i, int argc, char** argv) {
     return false;    
 }
 
+bool generics_cmd(int* i, int argc, char** argv) {
+    (void)i;
+    (void)argc;
+    (void)argv;
+    bk.conf.generics = true;
+    return true;
+}
+
 bool watch_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
@@ -1900,6 +2024,8 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
                 dst->output_mode = strdup(str_buf);
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
+            } else if (strcmp(str_buf, "generics") == 0) {
+                dst->generics = value_bool;
             } else if (strcmp(str_buf, "silent") == 0) {
                 dst->silent = value_bool;
             } else if (strcmp(str_buf, "verbose") == 0) {
