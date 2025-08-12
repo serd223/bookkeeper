@@ -120,6 +120,12 @@ You can use the `-w` flag to start `bk` in 'watch mode' where instead of analyzi
 >[!WARNING]
 > This feature is still work in progress and currently uses too much CPU. There currently exists a customizable `watch-delay` to combat this problem but it is more of a band-aid solution
 
+## Generics
+You can use the `--generics` flag to generate generic macros to use generated functions. These macros are placed inside `output-dir/generics.h` and look like `dump_$schema$(item, dst)` and `parse_$schema$(src, len, dst)`, respectively. Make sure to include this file *after* including other generated files (or at least the files that contain the functions that belong to the types which you plan on using with generics).
+
+>[!WARNING]
+> The current state of generics in `bk` is very much experimental and they don't play well with ENABLE/DISABLE macros. The generated code contains a lot of macro trickery to enable/disable types depending on if they were already included or not. That is necessary because the compiler doesn't just ignore unknown types in generic macros. Since we need to put all analyzed types in a single huge generic macro and we can't expect users to bring all analyzed types into scope just to use generic macros, we resort to preprocessor black magic. Another caveat with the current generics is that they assume that all schemas will respect the `dump/parse_$schema$_$type$` convention of naming their generated functions.
+
 # Configuration
 The generated code and the behavior of `bk` can be tweaked using a configuration file or via command line arguments. For a full list of command line options, you can run `bk -h`.
 
