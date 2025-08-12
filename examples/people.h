@@ -10,11 +10,11 @@ typedef struct {
 } Person derive_all();
 
 typedef struct {
-    Person personal_info;
-    const char* title;
-    double rating;
-    bool fired;
-    int office_floor;
+    Person personal_info; tag("PersonalInfo")
+    const char* title; tag("Title")
+    double rating; tag("Rating")
+    bool fired; tag("Fired")
+    int office_floor; tag("OfficeFloor")
 } Manager derive_json() derive_debug();
 
 #endif // __PEOPLE_H__

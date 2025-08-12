@@ -94,6 +94,7 @@ typedef struct {
 
 typedef struct {
     char* name;
+    char* tag;
     CType type;
 } Field;
 

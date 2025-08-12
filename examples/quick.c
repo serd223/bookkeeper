@@ -7,7 +7,7 @@
 #include "people.h.bk.h" // Generated file
 
 typedef struct {
-    Person friend_info;
+    Person friend_info; tag("info")
     int years_known;
 } Friend derive_json() derive_debug();
 #include "quick.c.bk.h" // Generated file

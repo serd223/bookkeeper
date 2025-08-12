@@ -115,6 +115,7 @@ typedef struct {
 
 typedef struct {
     char* name;
+    char* tag;
     CType type;
 } Field;
 
@@ -244,28 +245,51 @@ typedef enum {
 } while(0)
 #endif // __BK_GEN_EXT_DEFINITIONS
 
+#define __BK_API static
+
 // General utility functions
-static bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line);
+__BK_API bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line);
 #define read_entire_file(file_name, dst) read_entire_file_loc(file_name, dst, __FILE__, __LINE__)
-static bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
+__BK_API bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line);
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
-static unsigned long djb2(const char* s);
-static bool entry_from_file(const char* file_name, Entry* out);
+__BK_API unsigned long djb2(const char* s);
+__BK_API bool entry_from_file(const char* file_name, Entry* out);
 
 // Cleanup functions
-static void free_ccompund(CCompound cc);
-static void free_field(Field f);
-static void free_ctype(CType ct);
-static void free_entry(Entry e);
+__BK_API void free_ccompund(CCompound cc);
+__BK_API void free_field(Field f);
+__BK_API void free_ctype(CType ct);
+__BK_API void free_entry(Entry e);
 
 // Parsing C code
-static bool va_get_expect_ids(stb_lexer* lex, va_list args);
-static bool va_get_expect_tokens(stb_lexer* lex, va_list args);
-static bool peek_ids(stb_lexer* lex, ...);
-static bool peek_tokens(stb_lexer* lex, ...);
-static bool get_expect_tokens(stb_lexer* lex, ...);
-static bool get_expect_ids(stb_lexer* lex,...);
-static void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all);
+typedef enum {
+    WORD_TOK,
+    WORD_ID,
+    WORD_END
+} WordKind;
+
+typedef struct {
+    WordKind kind;
+    union {
+        int tok;
+        const char* id;
+    };
+} Word;
+
+#define ID(s) (Word){.kind = WORD_ID, .id=s}
+#define TK(t) (Word){.kind = WORD_TOK, .tok=t}
+#define WEND (Word){.kind = WORD_END}
+
+__BK_API bool va_get_expect_ids(stb_lexer* lex, va_list args);
+__BK_API bool va_get_expect_tokens(stb_lexer* lex, va_list args);
+__BK_API bool va_get_expect_c(stb_lexer* lex, va_list args);
+__BK_API bool peek_ids(stb_lexer* lex, ...);
+__BK_API bool peek_tokens(stb_lexer* lex, ...);
+__BK_API bool peek_c(stb_lexer* lex, ...);
+__BK_API bool get_expect_tokens(stb_lexer* lex, ...);
+__BK_API bool get_expect_ids(stb_lexer* lex,...);
+bool get_expect_c(stb_lexer* lex,...); // Unused for now
+__BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all);
 
 // Command line parsing
 static char* parse_list(char** src, char sep, size_t* entry_len);
@@ -760,6 +784,7 @@ int main(int argc, char** argv) {
     String book_buf = {0};
     print_string(&book_buf, "#ifndef __DERIVES_H__\n");
     print_string(&book_buf, "#define __DERIVES_H__\n");
+    print_string(&book_buf, "#define tag(s)\n");
     print_string(&book_buf, "#define derive_all(...)\n");
     for (size_t i = 0; i < bk.schemas.len; ++i) {
         print_string(&book_buf, "#define %s(...)\n", bk.schemas.items[i].derive_attr);
@@ -902,7 +927,7 @@ int main(int argc, char** argv) {
     return ret_val;
 }
 
-static bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line) {
+__BK_API bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line) {
     struct stat s = {0};
     stat(file_name, &s);
     size_t f_len = s.st_size / sizeof(char);
@@ -932,7 +957,7 @@ static bool read_entire_file_loc(const char* file_name, String* dst, const char*
     return true;
 }
 
-static bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line) {
+__BK_API bool write_entire_file_loc(const char* file_name, String* src, const char* source_file, int source_line) {
     FILE* f = fopen(file_name, "w");
     if (f == NULL) {
         bk_log_loc(LOG_ERROR, source_file, source_line, "Couldn't open file '%s': %s\n", file_name, strerror(errno));
@@ -950,13 +975,13 @@ static bool write_entire_file_loc(const char* file_name, String* src, const char
     return true;
 }
 
-static unsigned long djb2(const char* s) {
+__BK_API unsigned long djb2(const char* s) {
     unsigned long hash = 5381;
     for (char c; (c = *s++);) hash = ((hash << 5) + hash) + (unsigned long) c;
     return hash;
 }
 
-static bool entry_from_file(const char* file_name, Entry* out) {
+__BK_API bool entry_from_file(const char* file_name, Entry* out) {
     char* real = realpath(file_name, NULL); // alloc
     if (real == NULL) {
         bk_log(LOG_ERROR, "File '%s' doesn't exist: %s\n", file_name, strerror(errno));
@@ -973,47 +998,68 @@ static bool entry_from_file(const char* file_name, Entry* out) {
 }
 
 // Cleanup functions
-static void free_ccompund(CCompound cc) {        
+__BK_API void free_ccompund(CCompound cc) {        
     for (size_t i = 0; i < cc.fields.len; ++i) {
         free_field(cc.fields.items[i]);
     }
 }
 
-static void free_field(Field f) {
+__BK_API void free_field(Field f) {
     free(f.name);
+    free(f.tag);
     free_ctype(f.type);
 }
 
-static void free_ctype(CType ct) {
+__BK_API void free_ctype(CType ct) {
     if (ct.kind == CEXTERNAL) free(ct.name);
 }
 
-static void free_entry(Entry e) {
+__BK_API void free_entry(Entry e) {
     free(e.full);
     free(e.name);
 }
 
-static bool va_get_expect_ids(stb_lexer* lex, va_list args) {
+__BK_API bool va_get_expect_ids(stb_lexer* lex, va_list args) {
     const char* expected = va_arg(args, const char*);
     for (; expected != NULL; expected = va_arg(args, const char*)) {
         stb_c_lexer_get_token(lex);
-        if (!(lex->token == CLEX_id))           return false;
+        if (lex->token != CLEX_id)              return false;
         if (strcmp(lex->string, expected) != 0) return false;
     }
     return true;
 }
 
-static bool va_get_expect_tokens(stb_lexer* lex, va_list args) {
+__BK_API bool va_get_expect_tokens(stb_lexer* lex, va_list args) {
     int expected = va_arg(args, int);
     for (; expected > -1 ; expected = va_arg(args, int)) {
         stb_c_lexer_get_token(lex);
-        if (!(lex->token == expected)) return false;
+        if (lex->token != expected) return false;
     }
     return true;
 }
 
+__BK_API bool va_get_expect_c(stb_lexer* lex, va_list args) {
+    Word expected = va_arg(args, Word);
+    for(; expected.kind != WORD_END; expected = va_arg(args, Word)) {
+        stb_c_lexer_get_token(lex);
+        switch (expected.kind) {
+        case WORD_TOK: {
+            if (lex->token != expected.tok) return false;
+        } break;
+        case WORD_ID: {
+            if (lex->token != CLEX_id) return false;
+            if (strcmp(lex->string, expected.id) != 0) return false;
+        } break;
+        case WORD_END: {
+            abort(); // unreachable
+        } break;
+        }
+    }
+    return true;    
+}
+
 /// Arguments should be of type `const char*` and end with NULL
-static bool peek_ids(stb_lexer* lex, ...) {
+__BK_API bool peek_ids(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     char* pp = lex->parse_point;
@@ -1024,7 +1070,7 @@ static bool peek_ids(stb_lexer* lex, ...) {
 }
 
 /// Arguments should be of type `int` and end with -1
-static bool peek_tokens(stb_lexer* lex, ...) {
+__BK_API bool peek_tokens(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     char* pp = lex->parse_point;
@@ -1034,8 +1080,19 @@ static bool peek_tokens(stb_lexer* lex, ...) {
     return res;
 }
 
+/// Arguments should be of type `Word` and end with WEND
+__BK_API bool peek_c(stb_lexer* lex, ...) {
+    va_list args;
+    va_start(args, lex);
+    char* pp = lex->parse_point;
+    bool res = va_get_expect_c(lex, args);
+    lex->parse_point = pp;
+    va_end(args);
+    return res;
+}
+
 /// Arguments should be of type `int` and end with -1
-static bool get_expect_tokens(stb_lexer* lex, ...) {
+__BK_API bool get_expect_tokens(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     bool res = va_get_expect_tokens(lex, args);
@@ -1044,7 +1101,7 @@ static bool get_expect_tokens(stb_lexer* lex, ...) {
 }
 
 /// Arguments should be of type `const char*` and end with NULL
-static bool get_expect_ids(stb_lexer* lex, ...) {
+__BK_API bool get_expect_ids(stb_lexer* lex, ...) {
     va_list args;
     va_start(args, lex);
     bool res = va_get_expect_ids(lex, args);
@@ -1052,7 +1109,16 @@ static bool get_expect_ids(stb_lexer* lex, ...) {
     return res;
 }
 
-static void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all) {
+/// Arguments should be of type `Word` and end with WEND
+bool get_expect_c(stb_lexer* lex, ...) {
+    va_list args;
+    va_start(args, lex);
+    bool res = va_get_expect_c(lex, args);
+    va_end(args);
+    return res;
+}
+
+__BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all) {
     static char string_store[4096];
     stb_lexer lex = {0};
     stb_c_lexer_init(&lex, content.items, content.items + content.len, string_store, sizeof string_store);
@@ -1067,28 +1133,20 @@ static void analyze_file(Schemas schemas, String content, CCompounds* out, bool 
             CCompound strct = {0};
             if (derive_all) strct.derived_schemas |= UINT_MAX;
             for (;;) {
+                if (peek_tokens(&lex, '}', -1)) break;
                 Field field = {0};
-                if (peek_tokens(&lex, CLEX_id, CLEX_id, '*', CLEX_id, ';', -1) && peek_ids(&lex, "const", "char", NULL)) { 
+                if (peek_c(&lex, ID("const"), ID("char"), TK('*'), TK(CLEX_id), WEND)) { 
                     stb_c_lexer_get_token(&lex); // const
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
-                    stb_c_lexer_get_token(&lex); // name
-                    field.name = strdup(lex.string); // alloc
-                    stb_c_lexer_get_token(&lex); // ;
                     field.type.kind = CPRIMITIVE;
                     field.type.type = CSTRING;
-                    push_da(&strct.fields, field);
-
-                } else if (peek_tokens(&lex, CLEX_id, '*', CLEX_id, ';', -1) && peek_ids(&lex, "char", NULL)) {
+                } else if (peek_c(&lex, ID("char"), TK('*'), TK(CLEX_id), WEND)) {
                     stb_c_lexer_get_token(&lex); // char
                     stb_c_lexer_get_token(&lex); // *
-                    stb_c_lexer_get_token(&lex); // name
-                    field.name = strdup(lex.string); // alloc
-                    stb_c_lexer_get_token(&lex); // ;
                     field.type.kind = CPRIMITIVE;
                     field.type.type = CSTRING;
-                    push_da(&strct.fields, field);
-                } else if (peek_tokens(&lex, CLEX_id, CLEX_id, CLEX_id, ';', -1)) {
+                } else if (peek_tokens(&lex, CLEX_id, CLEX_id, CLEX_id, -1)) {
                     bool is_known_primitive = true;
                     if (peek_ids(&lex, "unsigned", "int", NULL)) {
                         field.type.type = CUINT;
@@ -1101,16 +1159,13 @@ static void analyze_file(Schemas schemas, String content, CCompounds* out, bool 
                         field.type.kind = CPRIMITIVE;
                         stb_c_lexer_get_token(&lex); // type name 1
                         stb_c_lexer_get_token(&lex); // type name 2
-                        stb_c_lexer_get_token(&lex); // name
-                        field.name = strdup(lex.string); // alloc
-                        stb_c_lexer_get_token(&lex); // ;
-                        push_da(&strct.fields, field);
                     } else {
-                        // TODO: Report unknown field error
+                        // TODO: Report unknown primitive error
+                        bk_log(LOG_ERROR, "TODO: Report unknown primitive error\n");
                         break;
                     }
                     
-                } else if (peek_tokens(&lex, CLEX_id, CLEX_id, ';', -1)) {
+                } else if (peek_tokens(&lex, CLEX_id, CLEX_id, -1)) {
                     bool is_known_primitive = true;
                     if (peek_ids(&lex, "int", NULL)) {
                         field.type.type = CINT;
@@ -1129,7 +1184,6 @@ static void analyze_file(Schemas schemas, String content, CCompounds* out, bool 
                     } else {
                         is_known_primitive = false;
                     }
-
                     stb_c_lexer_get_token(&lex); // type name
                     if (!is_known_primitive) {
                         field.type.kind = CEXTERNAL;
@@ -1137,17 +1191,34 @@ static void analyze_file(Schemas schemas, String content, CCompounds* out, bool 
                     } else {
                         field.type.kind = CPRIMITIVE;
                     }
-                    stb_c_lexer_get_token(&lex); // name
-                    field.name = strdup(lex.string); // alloc
-                    stb_c_lexer_get_token(&lex); // ;
-                    push_da(&strct.fields, field);
                 } else {
                     // TODO: Report unknown field error
+                    bk_log(LOG_ERROR, "TODO: Report unknown field error\n");
                     break;
                 }
+                stb_c_lexer_get_token(&lex); // name
+                field.name = strdup(lex.string); // alloc
+                if (!get_expect_tokens(&lex, ';', -1)) {
+                    // TODO: get location info and report missing semicolon error
+                    free_field(field);
+                    break;
+                }
+                if (peek_c(&lex, ID("tag"), TK('('), TK(CLEX_dqstring), TK(')'), WEND)) {
+                    stb_c_lexer_get_token(&lex); // tag
+                    stb_c_lexer_get_token(&lex); // (
+                    stb_c_lexer_get_token(&lex); // name
+                    field.tag = strdup(lex.string); // alloc
+                    stb_c_lexer_get_token(&lex); // )
+                } else {
+                    field.tag = NULL;
+                }
+                push_da(&strct.fields, field);
             }
-            // `continue`ing here can leak unused field/type names of partially correct structs
-            if (!get_expect_tokens(&lex, '}', CLEX_id, -1)) continue;
+
+            if (!get_expect_tokens(&lex, '}', CLEX_id, -1)) {
+                free_ccompund(strct);
+                continue;
+            }
             strct.name = strdup(lex.string); // alloc
             while (peek_tokens(&lex, CLEX_id, '(', ')', -1)) {
                 bool matched = false;
@@ -1273,39 +1344,40 @@ void gen_json_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, c
     print_string(book_buf, "    %s(\"{\");\n", fmt_macro);
     for (size_t j = 0; j < ty->fields.len; ++j) {
         Field* f = ty->fields.items + j;
+        char* tag = f->tag ? f->tag : f->name;
         switch (f->type.kind) {
         case CPRIMITIVE: {
             switch (f->type.type) {
             case CINT: {
-                print_string(book_buf, "    %s(\"\\\"%s\\\":%%d\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":%%d\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CUINT: {
-                print_string(book_buf, "    %s(\"\\\"%s\\\":%%u\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":%%u\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CLONG: {
-                print_string(book_buf, "    %s(\"\\\"%s\\\":%%ld\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":%%ld\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CULONG: {
-                print_string(book_buf, "    %s(\"\\\"%s\\\":%%lu\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":%%lu\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CFLOAT: {
-                print_string(book_buf, "    %s(\"\\\"%s\\\":%%f\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":%%f\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CBOOL: {
-                print_string(book_buf, "    %s(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":%%s\", item->%s ? \"true\" : \"false\");\n", fmt_macro, tag, f->name);
             } break;
             case CSTRING: {
                 // TODO: The generated code should escape item->field before printing it
-                print_string(book_buf, "    %s(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":\\\"%%s\\\"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CCHAR: {
-                print_string(book_buf, "    %s(\"\\\"%s\\\":%%c\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"\\\"%s\\\":%%c\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             default: abort();
             }
         } break;
         case CEXTERNAL: {
-            print_string(book_buf, "    %s(\"\\\"%s\\\":\");\n", fmt_macro, f->name);
+            print_string(book_buf, "    %s(\"\\\"%s\\\":\");\n", fmt_macro, tag);
             print_string(book_buf, "    dump_json_%s(&item->%s, dst);\n", f->type.name, f->name);
         } break;
         default: abort();
@@ -1319,7 +1391,8 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
     print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst) {\n", ty->name, ty->name);
     for (size_t i = 0; i < ty->fields.len; ++i) {
         Field* f = ty->fields.items + i;
-        print_string(book_buf, "    cJSON* %s_%s = cJSON_GetObjectItemCaseSensitive(src, \"%s\");\n", ty->name, f->name, f->name);
+        char* tag = f->tag ? f->tag : f->name;
+        print_string(book_buf, "    cJSON* %s_%s = cJSON_GetObjectItemCaseSensitive(src, \"%s\");\n", ty->name, f->name, tag);
         print_string(book_buf, "    if (!%s_%s) return 0;\n", ty->name, f->name);
         if (f->type.kind == CEXTERNAL) {
             print_string(book_buf, "    if (!parse_cjson_%s(%s_%s, &dst->%s)) return 0;\n", f->type.name, ty->name, f->name, f->name);
@@ -1394,39 +1467,41 @@ void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, 
     print_string(book_buf, "    %s(\"%s {\\n\");\n", fmt_macro, ty->name);
     for (size_t j = 0; j < ty->fields.len; ++j) {
         Field* f = ty->fields.items + j;
+        char* tag = f->name;
+        // char* tag = f->tag ? f->tag : f->name;
         switch (f->type.kind) {
         case CPRIMITIVE: {
             switch (f->type.type) {
             case CINT: {
-                print_string(book_buf, "    %s(\"%%*s(int) %s: %%d\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(int) %s: %%d\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CUINT: {
-                print_string(book_buf, "    %s(\"%%*s(uint) %s: %%u\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(uint) %s: %%u\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CLONG: {
-                print_string(book_buf, "    %s(\"%%*s(long) %s: %%ld\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(long) %s: %%ld\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CULONG: {
-                print_string(book_buf, "    %s(\"%%*s(ulong) %s: %%lu\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(ulong) %s: %%lu\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CFLOAT: {
-                print_string(book_buf, "    %s(\"%%*s(float) %s: %%f\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(float) %s: %%f\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CBOOL: {
-                print_string(book_buf, "    %s(\"%%*s(bool) %s: %%s\\n\", indent + 4, \"\", item->%s ? \"true\" : \"false\");\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(bool) %s: %%s\\n\", indent + 4, \"\", item->%s ? \"true\" : \"false\");\n", fmt_macro, tag, f->name);
             } break;
             case CSTRING: {
                 // TODO: The generated code should escape item->field before printing it
-                print_string(book_buf, "    %s(\"%%*s(string) %s: %%s\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(string) %s: %%s\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             case CCHAR: {
-                print_string(book_buf, "    %s(\"%%*s(char) %s: %%c\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, f->name, f->name);
+                print_string(book_buf, "    %s(\"%%*s(char) %s: %%c\\n\", indent + 4, \"\", item->%s);\n", fmt_macro, tag, f->name);
             } break;
             default: abort();
             }
         } break;
         case CEXTERNAL: {
-            print_string(book_buf, "    %s(\"%%*s%s: \", indent + 4, \"\");\n", fmt_macro, f->name);
+            print_string(book_buf, "    %s(\"%%*s%s: \", indent + 4, \"\");\n", fmt_macro, tag);
             print_string(book_buf, "    __indent_dump_debug_%s(&item->%s, dst, indent + 4);\n", f->type.name, f->name);
         } break;
         default: abort();
