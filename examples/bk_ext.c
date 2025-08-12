@@ -1,4 +1,4 @@
-#include "../bookkeeper_gen_ext.h"
+#include "../bk_ext.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,4 +33,4 @@ Schema example = {\
 };\
 push_da(&s, example);
 
-#include "../bookkeeper_gen.c"
+#include "../bk.c"
