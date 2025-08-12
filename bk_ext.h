@@ -48,8 +48,6 @@ typedef struct {
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
-    char* disable_dump_macro;
-    char* disable_parse_macro;
     char* offset_type_macro;
     char* disable_macro_prefix;
     char* enable_macro_prefix;

@@ -69,8 +69,6 @@ typedef struct {
     char* gen_fmt_macro;
     char* gen_implementation_macro;
     char* gen_fmt_dst_macro;
-    char* disable_dump_macro;
-    char* disable_parse_macro;
     char* offset_type_macro;
     char* disable_macro_prefix;
     char* enable_macro_prefix;
@@ -278,9 +276,12 @@ static char* parse_list(char** src, char sep, size_t* entry_len);
 #define BK_PARSE_LOWER "parse"
 
 #define gen_ifndef_guard(fntype)\
-print_string(book_buf, "\n#ifndef %s%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name);
+print_string(book_buf, "\n#ifndef %s"fntype"\n", bk.conf.disable_macro_prefix);\
+print_string(book_buf, "\n#ifndef %s%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name);\
+
 #define gen_endif_guard(fntype)\
-print_string(book_buf, "\n#endif // %s%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name);
+print_string(book_buf, "\n#endif // %s%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name);\
+print_string(book_buf, "\n#endif // %s"fntype"\n", bk.conf.disable_macro_prefix);\
 
 #define gen_ifndef_type_guard(fntype)\
 print_string(book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
@@ -294,10 +295,10 @@ print_string(book_buf, "\n#endif // %s%s_%s\n", bk.conf.disable_macro_prefix, ty
 print_string(book_buf, "\n#endif // %s%s_"fntype"\n", bk.conf.disable_macro_prefix, schema->name);\
 print_string(book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
 
-size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* disable_dump_macro);
-size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro);
-void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro, const char* disable_dump_macro);
-void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro);
+size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type);
+size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty);
+void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty);
 
 // JSON generation
 size_t gen_json_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
@@ -353,8 +354,6 @@ bool disable_parse_cmd(int* i, int argc, char** argv);
 bool gen_impl_cmd(int* i, int argc, char** argv);
 bool gen_fmt_dst_cmd(int* i, int argc, char** argv);
 bool gen_fmt_cmd(int* i, int argc, char** argv);
-bool set_disable_dump_cmd(int* i, int argc, char** argv);
-bool set_disable_parse_cmd(int* i, int argc, char** argv);
 bool offset_type_cmd(int* i, int argc, char** argv);
 
 #define exec_cmd(cmd)\
@@ -507,20 +506,6 @@ static Command commands[] = {
         .exec_c = gen_fmt_cmd
     },
     {
-        .name = "set-disable-dump",
-        .flag = "--set-disable-dump",
-        .usage = "--set-disable-dump <name>",
-        .desc = "Sets the macro that will be used in the generated code to disable `dump` functions (`BK_DISABLE_DUMP`)",
-        .exec_c = set_disable_dump_cmd
-    },
-    {
-        .name = "set-disable-parse",
-        .flag = "--set-disable-parse",
-        .usage = "--set-disable-parse <name>",
-        .desc = "Sets the macro that will be used in the generated code to disable `parse` functions (`BK_DISABLE_PARSE`)",
-        .exec_c = set_disable_parse_cmd
-    },
-    {
         .name = "offset-type",
         .flag = "--offset-type",
         .usage = "--offset-type <name>",
@@ -607,8 +592,8 @@ int main(int argc, char** argv) {
     bk.conf.gen_fmt_macro = "BK_FMT";
     bk.conf.gen_implementation_macro = "BK_IMPLEMENTATION";
     bk.conf.gen_fmt_dst_macro = "BK_FMT_DST_t";
-    bk.conf.disable_dump_macro = "BK_DISABLE_DUMP";
-    bk.conf.disable_parse_macro = "BK_DISABLE_PARSE";
+    // bk.conf.disable_dump_macro = "BK_DISABLE_DUMP";
+    // bk.conf.disable_parse_macro = "BK_DISABLE_PARSE";
     bk.conf.offset_type_macro = "BK_OFFSET_t";
     bk.conf.disable_macro_prefix = "BK_DISABLE_";
     bk.conf.enable_macro_prefix = "BK_ENABLE_";
@@ -820,10 +805,10 @@ int main(int argc, char** argv) {
                     for (size_t i = 0; i < types.len; ++i) {
                         print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
                         if (!bk.conf.disable_dump) {
-                            num_decls += gen_dump_decl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.disable_dump_macro);
+                            num_decls += gen_dump_decl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro);
                         }
                         if (!bk.conf.disable_parse) {
-                            num_decls += gen_parse_decl(bk.schemas, &book_buf, types.items + i, bk.conf.disable_parse_macro);
+                            num_decls += gen_parse_decl(bk.schemas, &book_buf, types.items + i);
                         }
                         print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
                     }
@@ -834,10 +819,10 @@ int main(int argc, char** argv) {
                                 print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
                             }
                             if (!bk.conf.disable_dump) {
-                                gen_dump_impl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro, bk.conf.disable_dump_macro);
+                                gen_dump_impl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro);
                             }
                             if (!bk.conf.disable_parse) {
-                                gen_parse_impl(bk.schemas, &book_buf, types.items + i, bk.conf.disable_parse_macro);
+                                gen_parse_impl(bk.schemas, &book_buf, types.items + i);
                             }
                             if (types.items[i].derived_schemas != 0) {
                                 print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
@@ -1162,10 +1147,9 @@ static void analyze_file(Schemas schemas, String content, CCompounds* out, bool 
     }
 }
 
-size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* disable_dump_macro) {
+size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type) {
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
-    print_string(book_buf, "\n#ifndef %s\n", disable_dump_macro);
     gen_ifndef_guard(BK_DUMP_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
@@ -1178,14 +1162,12 @@ size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const cha
         }
     }
     gen_endif_guard(BK_DUMP_UPPER);
-    print_string(book_buf, "#endif // %s\n", disable_dump_macro);
     return count;
 }
 
-size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro) {
+size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty) {
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
-    print_string(book_buf, "\n#ifndef %s\n", disable_parse_macro);
     gen_ifndef_guard(BK_PARSE_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
@@ -1198,13 +1180,11 @@ size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const ch
         }
     }
     gen_endif_guard(BK_PARSE_UPPER);
-    print_string(book_buf, "#endif // %s\n", disable_parse_macro);
     return count;
 }
 
-void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro, const char* disable_dump_macro) {
+void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
     if (ty->derived_schemas == 0) return;
-    print_string(book_buf, "\n#ifndef %s\n", disable_dump_macro);
     gen_ifndef_guard(BK_DUMP_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
@@ -1217,12 +1197,10 @@ void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char*
         }
     }
     gen_endif_guard(BK_DUMP_UPPER);
-    print_string(book_buf, "\n#endif // %s\n", disable_dump_macro);
 }
 
-void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro) {
+void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty) {
     if (ty->derived_schemas == 0) return;
-    print_string(book_buf, "\n#ifndef %s\n", disable_parse_macro);
     gen_ifndef_guard(BK_PARSE_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
@@ -1235,7 +1213,6 @@ void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty, const char
         }
     }
     gen_endif_guard(BK_PARSE_UPPER);
-    print_string(book_buf, "\n#endif // %s\n", disable_parse_macro);
 }
 
 // JSON generation
@@ -1709,22 +1686,6 @@ bool gen_fmt_cmd(int* i, int argc, char** argv) {
     return false;
 }
 
-bool set_disable_dump_cmd(int* i, int argc, char** argv) {
-    if (++*i < argc) {
-        bk.conf.disable_dump_macro = argv[*i];
-        return true;
-    }
-    return false;
-}
-
-bool set_disable_parse_cmd(int* i, int argc, char** argv) {
-    if (++*i < argc) {
-        bk.conf.disable_parse_macro = argv[*i];
-        return true;
-    }
-    return false;
-}
-
 bool offset_type_cmd(int* i, int argc, char** argv) {
     if (++*i < argc) {
         bk.conf.offset_type_macro = argv[*i];
@@ -1829,14 +1790,6 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
             } else if (strcmp(str_buf, "gen_fmt_dst_macro") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
                 dst->gen_fmt_dst_macro = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "disable_dump_macro") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->disable_dump_macro = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "disable_parse_macro") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->disable_parse_macro = strdup(str_buf);
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
             } else if (strcmp(str_buf, "offset_type_macro") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;

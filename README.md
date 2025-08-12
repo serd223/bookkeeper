@@ -94,8 +94,9 @@ Depending on the `output-mode`, generated files are either placed next to their 
 The behavior of generated code can be tweaked with defining/redefining certain macros while including them. Although the specific names of these macros can be customized, here are some of them explained with their default names:
   * Dump functions use a macro named `BK_FMT` defined inside the `*.bk.h` files to output into the provided `dst` buffer.
   * The type of this `dst` argument for the 'dump' family of functions depends on the `BK_FMT_DST_t` macro that you should redefine if your `BK_FMT` implementation expects a different type from the default one. The default implementation uses `fprintf` and expects `dst` to be `FILE*` but it can be redefined inside your code before including your `*.bk.h` file. (See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
-  * Dump functions and parse functions can be disabled separately with `BK_DISABLE_DUMP` and `BK_DISABLE_PARSE`, respectively.
   * There are also disable macros generated for each type, these macros have a prefix `disable-prefix` which defaults to `BK_DISABLE_`. The following examples will be shown with the default prefix:
+    - `BK_DISABLE_DUMP`: Disables dump functionality.
+    - `BK_DISABLE_PARSE`: Disables parse functionality.
     - `BK_DISABLE_$type$`: Disables all functionality that belongs to $type$.
     - `BK_DISABLE_$type$_DUMP`: Disables dump functionality that belongs to $type$.
     - `BK_DISABLE_$type$_PARSE`: Disables parse functionality that belongs to $type$.
