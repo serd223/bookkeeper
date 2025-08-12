@@ -1,5 +1,5 @@
 PWD = $(shell pwd)
-CFLAGS = -I$(PWD)/thirdparty/ -Wunused-parameter
+CFLAGS = -I$(PWD)/thirdparty/ -Wall -Wextra
 
 comma := ,
 empty :=
