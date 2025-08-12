@@ -28,6 +28,10 @@ DEALINGS IN THE SOFTWARE.
 #ifndef __BOOKKEEPER_GEN_C__
 #define __BOOKKEEPER_GEN_C__
 
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -68,7 +72,8 @@ typedef struct {
     char* disable_dump_macro;
     char* disable_parse_macro;
     char* offset_type_macro;
-    char* type_disable_macro_prefix;
+    char* disable_macro_prefix;
+    char* enable_macro_prefix;
     bool derive_all;
     char* include_dir;
     char* include_files; // This field is only used for loading include files from configs
@@ -583,7 +588,8 @@ int main(int argc, char** argv) {
     bk.conf.disable_dump_macro = "BK_DISABLE_DUMP";
     bk.conf.disable_parse_macro = "BK_DISABLE_PARSE";
     bk.conf.offset_type_macro = "BK_OFFSET_t";
-    bk.conf.type_disable_macro_prefix = "BK_DISABLE_";
+    bk.conf.disable_macro_prefix = "BK_DISABLE_";
+    bk.conf.enable_macro_prefix = "BK_ENABLE_";
 
     bk.conf.silent = false;
     bk.conf.verbose = false;
@@ -790,20 +796,20 @@ int main(int argc, char** argv) {
                     print_string(&book_buf, "#endif // %s\n", bk.conf.offset_type_macro);
                     size_t num_decls = 0;
                     for (size_t i = 0; i < types.len; ++i) {
-                        print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
+                        print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
                         if (!bk.conf.disable_dump) {
                             num_decls += gen_dump_decl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.disable_dump_macro);
                         }
                         if (!bk.conf.disable_parse) {
                             num_decls += gen_parse_decl(bk.schemas, &book_buf, types.items + i, bk.conf.disable_parse_macro);
                         }
-                        print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
+                        print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
                     }
                     if (num_decls > 0) {
                         print_string(&book_buf, "\n#ifdef %s\n", bk.conf.gen_implementation_macro);
                         for (size_t i = 0; i < types.len; ++i) {
                             if (types.items[i].derived_schemas != 0) {
-                                print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
+                                print_string(&book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
                             }
                             if (!bk.conf.disable_dump) {
                                 gen_dump_impl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro, bk.conf.disable_dump_macro);
@@ -812,7 +818,7 @@ int main(int argc, char** argv) {
                                 gen_parse_impl(bk.schemas, &book_buf, types.items + i, bk.conf.disable_parse_macro);
                             }
                             if (types.items[i].derived_schemas != 0) {
-                                print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.type_disable_macro_prefix, types.items[i].name);
+                                print_string(&book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, types.items[i].name);
                             }
                         }
                         print_string(&book_buf, "\n#endif // %s\n", bk.conf.gen_implementation_macro);
@@ -1389,7 +1395,15 @@ void gen_bkconf_parse_impl(String* book_buf, CCompound* ty) {
     print_string(book_buf, "    long value_int = 0;\n");
     print_string(book_buf, "    bool value_bool = false;\n");
     print_string(book_buf, "    for (const char* cur = src; cur < (src + len); ++cur) {\n");
-    print_string(book_buf, "        if (*cur == '\\n') {\n");
+    print_string(book_buf, "        if (*cur == '#') {\n");
+    print_string(book_buf, "            for (; cur < (src + len); ++cur) {\n");
+    print_string(book_buf, "                if (*cur == '\\n') {\n");
+    print_string(book_buf, "                    ++cur;\n");
+    print_string(book_buf, "                    name_start = cur;\n");
+    print_string(book_buf, "                    break;\n");
+    print_string(book_buf, "                }\n");
+    print_string(book_buf, "            }\n");
+    print_string(book_buf, "        } else if (*cur == '\\n') {\n");
     print_string(book_buf, "            value_end = cur - 1;\n");
     print_string(book_buf, "            value_int = atol(value_start);\n");
     print_string(book_buf, "            value_double = atof(value_start);\n");
@@ -1721,7 +1735,15 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
     long value_int = 0;
     bool value_bool = false;
     for (const char* cur = src; cur < (src + len); ++cur) {
-        if (*cur == '\n') {
+        if (*cur == '#') {
+            for (; cur < (src + len); ++cur) {
+                if (*cur == '\n') {
+                    ++cur;
+                    name_start = cur;
+                    break;
+                }
+            }
+        } else if (*cur == '\n') {
             value_end = cur - 1;
             value_int = atol(value_start);
             value_double = atof(value_start);
@@ -1774,9 +1796,13 @@ int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
                 dst->offset_type_macro = strdup(str_buf);
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "type_disable_macro_prefix") == 0) {
+            } else if (strcmp(str_buf, "disable_macro_prefix") == 0) {
                 str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->type_disable_macro_prefix = strdup(str_buf);
+                dst->disable_macro_prefix = strdup(str_buf);
+                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
+            } else if (strcmp(str_buf, "enable_macro_prefix") == 0) {
+                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+                dst->enable_macro_prefix = strdup(str_buf);
                 str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
             } else if (strcmp(str_buf, "derive_all") == 0) {
                 dst->derive_all = value_bool;

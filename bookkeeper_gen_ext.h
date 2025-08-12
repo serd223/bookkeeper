@@ -51,7 +51,8 @@ typedef struct {
     char* disable_dump_macro;
     char* disable_parse_macro;
     char* offset_type_macro;
-    char* type_disable_macro_prefix;
+    char* disable_macro_prefix;
+    char* enable_macro_prefix;
     bool derive_all;
     char* include_dir;
     char* include_files; // This field is only used for loading include files from configs
