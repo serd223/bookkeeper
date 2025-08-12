@@ -9,7 +9,7 @@ Here is a simple example that outputs both JSON and Debug output: ([quick.c](htt
 #include <stdio.h>
 
 #define BK_IMPLEMENTATION
-#define BK_DISABLE_PARSE
+#define BK_DISABLE_json_PARSE
 
 #include "people.h" // Example file
 #include "people.h.bk.h" // Generated file
@@ -94,8 +94,17 @@ Depending on the `output-mode`, generated files are either placed next to their 
 The behavior of generated code can be tweaked with defining/redefining certain macros while including them. Although the specific names of these macros can be customized, here are some of them explained with their default names:
   * Dump functions use a macro named `BK_FMT` defined inside the `*.bk.h` files to output into the provided `dst` buffer.
   * The type of this `dst` argument for the 'dump' family of functions depends on the `BK_FMT_DST_t` macro that you should redefine if your `BK_FMT` implementation expects a different type from the default one. The default implementation uses `fprintf` and expects `dst` to be `FILE*` but it can be redefined inside your code before including your `*.bk.h` file. (See [dump_people.c](https://github.com/serd223/bookkeeper/blob/master/examples/dump_people.c))
-  * Functions generated for a specific type can be disabled by defining the `BK_DISABLE_$type$` macro in your code.
   * Dump functions and parse functions can be disabled separately with `BK_DISABLE_DUMP` and `BK_DISABLE_PARSE`, respectively.
+  * There are also disable macros generated for each type, these macros have a prefix `disable-prefix` which defaults to `BK_DISABLE_`. The following examples will be shown with the default prefix:
+    - `BK_DISABLE_$type$`: Disables all functionality that belongs to $type$.
+    - `BK_DISABLE_$type$_DUMP`: Disables dump functionality that belongs to $type$.
+    - `BK_DISABLE_$type$_PARSE`: Disables parse functionality that belongs to $type$.
+    - `BK_DISABLE_$type$_$schema$`: Disables all functionality that works on $schema$ and belongs to $type$.
+    - `BK_DISABLE_$type$_$schema$_DUMP`: Disables dump functionality that works on $schema$ and belongs to $type$.
+    - `BK_DISABLE_$type$_$schema$_PARSE`: Disables parse functionality that works on $schema$ and belongs to $type$.
+    - `BK_DISABLE_$schema$`: Disables all functionality that works on $schema$.
+    - `BK_DISABLE_$schema$_DUMP`: Disables dump functionality that works on $schema$.
+    - `BK_DISABLE_$schema$_PARSE`: Disables parse functionality that works on $schema$.
 
 The names of the special generated macros mentioned above (like `BK_FMT`) can all be customized via command line arguments supplied to `bk`. Try `bk -h` for a list of all available flags.
 

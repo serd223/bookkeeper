@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #define BK_IMPLEMENTATION
-#define BK_DISABLE_PARSE
+#define BK_DISABLE_json_PARSE
 
 #include "people.h" // Example file
 #include "people.h.bk.h" // Generated file

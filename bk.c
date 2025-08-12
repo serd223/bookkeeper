@@ -284,12 +284,15 @@ print_string(book_buf, "\n#endif // %s%s_"fntype"\n", bk.conf.disable_macro_pref
 
 #define gen_ifndef_type_guard(fntype)\
 print_string(book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
+print_string(book_buf, "\n#ifndef %s%s_"fntype"\n", bk.conf.disable_macro_prefix, schema->name);\
 print_string(book_buf, "\n#ifndef %s%s_%s\n", bk.conf.disable_macro_prefix, ty->name, schema->name);\
-print_string(book_buf, "\n#ifndef %s%s_%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name, schema->name);
+print_string(book_buf, "\n#ifndef %s%s_%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name, schema->name);\
+
 #define gen_endif_type_guard(fntype)\
-print_string(book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
+print_string(book_buf, "\n#endif // %s%s_%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name, schema->name);\
 print_string(book_buf, "\n#endif // %s%s_%s\n", bk.conf.disable_macro_prefix, ty->name, schema->name);\
-print_string(book_buf, "\n#endif // %s%s_%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name, schema->name);
+print_string(book_buf, "\n#endif // %s%s_"fntype"\n", bk.conf.disable_macro_prefix, schema->name);\
+print_string(book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
 
 size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* disable_dump_macro);
 size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro);
@@ -525,10 +528,10 @@ static Command commands[] = {
         .exec_c = offset_type_cmd
     },
     {
-        .name = "disable-type-prefix",
-        .flag = "--disable-type-prefix",
-        .usage = "--disable-type-prefix <name>",
-        .desc = "Sets the prefix of the generated macro that can be used to disable generated code for a specific user type (<prefix><typename>) (`BK_DISABLE_`)",
+        .name = "disable-prefix",
+        .flag = "--disable-prefix",
+        .usage = "--disable-prefix <name>",
+        .desc = "Sets the prefix of the generated macros that disable specific stuff, like `$prefix$$type$_$schema$` (`BK_DISABLE_`)",
         .exec_c = offset_type_cmd
     },
 };
