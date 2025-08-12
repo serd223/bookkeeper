@@ -153,7 +153,7 @@ In order to add an extension to `bookkeeper`, you will need to wrap the `bookkee
 In order to test the provided extension example, you can run:
 ```console
     $ make schema_ext
-    $ ./build/bookkeeper_gen_ext -I ./examples -o ./gen
+    $ ./build/bookkeeper_gen_ext -I ./examples -o ./gen -om dir
 ```
 You can then inspect the generated files inside the `gen` folder to see the generated example schema functions.
 
