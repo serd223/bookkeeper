@@ -106,6 +106,7 @@ The behavior of generated code can be tweaked with defining/redefining certain m
     - `BK_DISABLE_$schema$`: Disables all functionality that works on $schema$.
     - `BK_DISABLE_$schema$_DUMP`: Disables dump functionality that works on $schema$.
     - `BK_DISABLE_$schema$_PARSE`: Disables parse functionality that works on $schema$.
+  * You can also use the `--disabled` flag with `bk` to make all functionality disabled by default. In this mode, you can use the same macros listed above with the `enable-prefix` instead of `disable-prefix`. `enable-prefix` defaults to `BK_ENABLE_`
 
 The names of the special generated macros mentioned above (like `BK_FMT`) can all be customized via command line arguments supplied to `bk`. Try `bk -h` for a list of all available flags.
 

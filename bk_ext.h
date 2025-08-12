@@ -43,6 +43,7 @@ typedef struct {
     bool warn_no_output;
     bool disable_dump;
     bool disable_parse;
+    bool disabled_by_default;
     bool watch_mode;
     long watch_delay;
     char* gen_fmt_macro;

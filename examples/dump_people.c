@@ -16,7 +16,15 @@ typedef struct {
 // This is the default BK_FMT implementation with `fprintf`
 #define BK_FMT_DST_t FILE*
 #define BK_FMT(...) offset += fprintf(dst, __VA_ARGS__)
+
 #define BK_DISABLE_json_PARSE
+
+// If we were using the --disabled option, these would be
+// the definitions we would use.
+// #define BK_ENABLE_Person_DUMP
+// #define BK_ENABLE_Manager_DUMP
+// #define BK_ENABLE_ManagerWithSalary_DUMP
+
 #define BK_IMPLEMENTATION
 #include "people.h.bk.h"
 #include "dump_people.c.bk.h"
