@@ -272,6 +272,25 @@ static void analyze_file(Schemas schemas, String content, CCompounds* out, bool 
 static char* parse_list(char** src, char sep, size_t* entry_len);
 
 // Code generation
+#define BK_DUMP_UPPER "DUMP"
+#define BK_PARSE_UPPER "PARSE"
+#define BK_DUMP_LOWER "dump"
+#define BK_PARSE_LOWER "parse"
+
+#define gen_ifndef_guard(fntype)\
+print_string(book_buf, "\n#ifndef %s%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name);
+#define gen_endif_guard(fntype)\
+print_string(book_buf, "\n#endif // %s%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name);
+
+#define gen_ifndef_type_guard(fntype)\
+print_string(book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
+print_string(book_buf, "\n#ifndef %s%s_%s\n", bk.conf.disable_macro_prefix, ty->name, schema->name);\
+print_string(book_buf, "\n#ifndef %s%s_%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name, schema->name);
+#define gen_endif_type_guard(fntype)\
+print_string(book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
+print_string(book_buf, "\n#endif // %s%s_%s\n", bk.conf.disable_macro_prefix, ty->name, schema->name);\
+print_string(book_buf, "\n#endif // %s%s_%s_"fntype"\n", bk.conf.disable_macro_prefix, ty->name, schema->name);
+
 size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* disable_dump_macro);
 size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro);
 void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro, const char* disable_dump_macro);
@@ -1144,12 +1163,18 @@ size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const cha
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
     print_string(book_buf, "\n#ifndef %s\n", disable_dump_macro);
+    gen_ifndef_guard(BK_DUMP_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
-            if (schema->gen_dump_decl != NULL) count += schema->gen_dump_decl(book_buf, ty, dst_type);
+            if (schema->gen_dump_decl != NULL) {
+                gen_ifndef_type_guard(BK_DUMP_UPPER);
+                count += schema->gen_dump_decl(book_buf, ty, dst_type);
+                gen_endif_type_guard(BK_DUMP_UPPER);
+            }
         }
     }
+    gen_endif_guard(BK_DUMP_UPPER);
     print_string(book_buf, "#endif // %s\n", disable_dump_macro);
     return count;
 }
@@ -1158,12 +1183,18 @@ size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const ch
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
     print_string(book_buf, "\n#ifndef %s\n", disable_parse_macro);
+    gen_ifndef_guard(BK_PARSE_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
-            if (schema->gen_parse_decl != NULL) count += schema->gen_parse_decl(book_buf, ty);
+            if (schema->gen_parse_decl != NULL) {
+                gen_ifndef_type_guard(BK_PARSE_UPPER);
+                count += schema->gen_parse_decl(book_buf, ty);
+                gen_endif_type_guard(BK_PARSE_UPPER);
+            }
         }
     }
+    gen_endif_guard(BK_PARSE_UPPER);
     print_string(book_buf, "#endif // %s\n", disable_parse_macro);
     return count;
 }
@@ -1171,24 +1202,36 @@ size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty, const ch
 void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro, const char* disable_dump_macro) {
     if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifndef %s\n", disable_dump_macro);
+    gen_ifndef_guard(BK_DUMP_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
-            if (schema->gen_dump_impl != NULL) schema->gen_dump_impl(book_buf, ty, dst_type, fmt_macro);
+            if (schema->gen_dump_impl != NULL) {
+                gen_ifndef_type_guard(BK_DUMP_UPPER);
+                schema->gen_dump_impl(book_buf, ty, dst_type, fmt_macro);
+                gen_endif_type_guard(BK_DUMP_UPPER);
+            }
         }
     }
+    gen_endif_guard(BK_DUMP_UPPER);
     print_string(book_buf, "\n#endif // %s\n", disable_dump_macro);
 }
 
 void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* disable_parse_macro) {
     if (ty->derived_schemas == 0) return;
     print_string(book_buf, "\n#ifndef %s\n", disable_parse_macro);
+    gen_ifndef_guard(BK_PARSE_UPPER);
     for (size_t i = 0; i < schemas.len; ++i) {
         Schema* schema = schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
-            if (schema->gen_parse_impl != NULL) schema->gen_parse_impl(book_buf, ty);
+            if (schema->gen_parse_impl != NULL) {
+                gen_ifndef_type_guard(BK_PARSE_UPPER);
+                schema->gen_parse_impl(book_buf, ty);
+                gen_endif_type_guard(BK_PARSE_UPPER);
+            }
         }
     }
+    gen_endif_guard(BK_PARSE_UPPER);
     print_string(book_buf, "\n#endif // %s\n", disable_parse_macro);
 }
 
