@@ -958,8 +958,8 @@ int main(int argc, char** argv) {
                     const char* t_name = all_types.items[j].name;
                     print_string(&book_buf, "    ___BK_IF_TYPE_%s(%s*: "BK_DUMP_LOWER"_%s_%s)\\\n", t_name, t_name, s_name, t_name);
                 }
-                print_string(&book_buf, "\n#define "BK_DUMP_LOWER"_%s(item, sink)\\\n", s_name);
-                print_string(&book_buf, "_Generic((item), ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES default: NULL)((item), (sink))\n", s_name);
+                print_string(&book_buf, "\n#define "BK_DUMP_LOWER"_%s(item, dst)\\\n", s_name);
+                print_string(&book_buf, "_Generic((item), ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES default: NULL)((item), (dst))\n", s_name);
 
                 // dump guard end
                 if (bk.conf.disabled_by_default) {
@@ -997,8 +997,8 @@ int main(int argc, char** argv) {
                     const char* t_name = all_types.items[j].name;
                     print_string(&book_buf, "    ___BK_IF_TYPE_%s(%s*: "BK_PARSE_LOWER"_%s_%s)\\\n", t_name, t_name, s_name, t_name);
                 }
-                print_string(&book_buf, "\n#define "BK_PARSE_LOWER"_%s(item, sink)\\\n", s_name);
-                print_string(&book_buf, "_Generic((item), ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES default: NULL)((item), (sink))\n", s_name);
+                print_string(&book_buf, "\n#define "BK_PARSE_LOWER"_%s(src, len, dst)\\\n", s_name);
+                print_string(&book_buf, "_Generic((dst), ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES default: NULL)((src), (len), (dst))\n", s_name);
 
                 // parse guard end
                 if (bk.conf.disabled_by_default) {
