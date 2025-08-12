@@ -124,6 +124,7 @@ The generated code and the behavior of `bk` can be tweaked using a configuration
 
 A valid config file looks like this:
 ```ini
+# Comments start with #
 key=value
 key1=othervalue
 ```
@@ -134,6 +135,8 @@ Since command line flags and config options are mostly the same, you can run `bk
 A notable exception to this is `include-files` vs `-i`. `-i` accepts a single file and you supply multiple `-i` flags when you want to include multiple files. On the other hand, the `include-files` option accepts a comma separated list of files (like 'file1,file2,file3').
 
 When in doubt, see [full_config.conf](https://github.com/serd223/bookkeeper/blob/master/examples/full_config.conf) for a list of all valid keys.
+
+Note that configuration files are processed _before_ command line arguments. This means that any command line argument will override the configuration file if they change the same option.
 
 # Schema Extensions
 In order to add an extension to `bookkeeper`, you will need to wrap the `bk.c` file in your custom wrapper. You will need the `bk_ext.h` header to have access to the necessary types in your wrapper. A simple wrapper would look like this:
