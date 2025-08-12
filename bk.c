@@ -600,7 +600,7 @@ int main(int argc, char** argv) {
 
     bk.conf.silent = false;
     bk.conf.verbose = false;
-    bk.conf.warn_no_include = true;
+    bk.conf.warn_no_include = false;
     bk.conf.warn_no_output = true;
     bk.conf.warn_unknown_attr = true;
     bk.conf.derive_all = false;
@@ -688,8 +688,7 @@ int main(int argc, char** argv) {
     }
 
     if (bk.conf.include_dir == NULL && bk.entries.len == 0) {
-        if (bk.conf.warn_no_include) bk_log(LOG_WARN, "No files were included, exiting...\n");
-        ret_clean(1);
+        if (bk.conf.warn_no_include) bk_log(LOG_WARN, "No files were included\n");
     }
     if (bk.conf.output_dir == NULL) {
         if (bk.conf.warn_no_output) bk_log(LOG_WARN, "No output path set, exiting...\n");
@@ -756,6 +755,8 @@ int main(int argc, char** argv) {
         }
         closedir(input_dir);
     }
+
+    if (bk.entries.len <= 0) ret_clean(0);
 
     size_t file_idx = 0;
     book_buf.len = 0;
