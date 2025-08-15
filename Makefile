@@ -29,6 +29,9 @@ schema_ext: ./build/bk_ext
 
 all: quick dump parse schema_ext
 
+gen/bk_ext.h: build/bk
+	./build/bk --gen-ext ./bk.c ./gen/bk_ext.h -dW no-output
+
 build/bk: bk.c ./thirdparty/stb_c_lexer.h
 	clang $(CFLAGS) bk.c -o ./build/bk
 
@@ -44,7 +47,7 @@ build/dump_people: ./examples/people.h ./examples/dump_people.c gen
 build/parse_people: ./examples/people.h ./examples/parse_people.c gen ./thirdparty/cJSON.c ./thirdparty/cJSON.h
 	clang $(CFLAGS) -g ./examples/parse_people.c ./thirdparty/cJSON.c -o ./build/parse_people
 
-build/bk_ext: ./bk.c ./bk_ext.h ./thirdparty/stb_c_lexer.h
+build/bk_ext: gen/bk_ext.h
 	clang $(CFLAGS) ./examples/bk_ext.c -o ./build/bk_ext
 
 clean:

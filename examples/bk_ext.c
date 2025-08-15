@@ -1,7 +1,9 @@
-#include "../bk_ext.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
+
+#include "../gen/bk_ext.h"
 
 size_t gen_example_dump_decl(String* book_buf, CCompound* ty, const char* dst_type) {
     print_string(book_buf, "void dump_example_%s(%s* item, %s dst);\n", ty->name, ty->name, dst_type);

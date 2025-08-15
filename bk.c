@@ -47,12 +47,10 @@ DEALINGS IN THE SOFTWARE.
 
 // #define BK_ENABLE_BK_CONF_GEN
 
-// NOTE: in order to keep the source code of this tool in a single file, we have to _manually_
-// sync these definitions with the ones inside `bookkeeper_gen_ext.h` for consistency.
-// You should only put definitions inside the scope of this guard if that definition needs to
-// be accessible inside extensions.
 #ifndef __BK_GEN_EXT_DEFINITIONS
-// This would typically be in derives.h, but the single file limitation strikes again
+#define __BK_GEN_EXT_DEFINITIONS
+
+// This would typically be in drives.h, but the single file limitation strikes again
 #define derive_bkconf(...)
 
 typedef struct {
@@ -389,6 +387,7 @@ typedef struct {
 bool help_cmd(int* i, int argc, char** argv);
 bool config_path_cmd(int* i, int argc, char** argv);
 bool output_mode_cmd(int* i, int argc, char** argv);
+bool gen_ext_cmd(int* i, int argc, char** argv);
 bool generics_cmd(int* i, int argc, char** argv);
 bool watch_cmd(int* i, int argc, char** argv);
 bool watch_delay_cmd(int* i, int argc, char** argv);
@@ -440,6 +439,13 @@ static Command commands[] = {
         .usage = "-om <mirror|dir>",
         .desc = "Sets the preffered output mode. `mirror` puts generated files next to the files they were generated from. `dir` puts all generated files in the specified `output-directory`. (`derives.h` is always placed inside `output-directory`)",
         .exec_c = output_mode_cmd
+    },
+    {
+        .name = "gen-ext",
+        .flag = "--gen-ext",
+        .usage = "--gen-ext <bk-source> <out-file>",
+        .desc = "Generates the extension header from `bk-source` (bk.c) that contains the definitions that should be included inside static schema extensions.",
+        .exec_c = gen_ext_cmd
     },
     {
         .name = "generics",
@@ -769,8 +775,7 @@ int main(int argc, char** argv) {
         if (bk.conf.warn_no_include) bk_log(LOG_WARN, "No files were included\n");
     }
     if (bk.conf.output_dir == NULL) {
-        if (bk.conf.warn_no_output) bk_log(LOG_WARN, "No output path set, exiting...\n");
-        ret_clean(1);
+        if (bk.conf.warn_no_output) bk_log(LOG_WARN, "No output path set\n");
     }
     
     {
@@ -778,8 +783,10 @@ int main(int argc, char** argv) {
             size_t in_len = strlen(bk.conf.include_dir);
             if (bk.conf.include_dir[in_len - 1] == '/') bk.conf.include_dir[in_len - 1] = 0;
         }
-        size_t out_len = strlen(bk.conf.output_dir);
-        if (bk.conf.output_dir[out_len - 1] == '/') bk.conf.output_dir[out_len - 1] = 0;
+        if (bk.conf.output_dir != NULL) {
+            size_t out_len = strlen(bk.conf.output_dir);
+            if (bk.conf.output_dir[out_len - 1] == '/') bk.conf.output_dir[out_len - 1] = 0;
+        }
     }
 
     OutputMode output_mode;
@@ -793,15 +800,17 @@ int main(int argc, char** argv) {
     }
 
     String book_buf = {0};
-    print_string(&book_buf, "#ifndef __DERIVES_H__\n");
-    print_string(&book_buf, "#define __DERIVES_H__\n");
-    print_string(&book_buf, "#define tag(s)\n");
-    print_string(&book_buf, "#define derive_all(...)\n");
-    for (size_t i = 0; i < bk.schemas.len; ++i) {
-        print_string(&book_buf, "#define %s(...)\n", bk.schemas.items[i].derive_attr);
+    if (bk.conf.output_dir != NULL) {
+        print_string(&book_buf, "#ifndef __DERIVES_H__\n");
+        print_string(&book_buf, "#define __DERIVES_H__\n");
+        print_string(&book_buf, "#define tag(s)\n");
+        print_string(&book_buf, "#define derive_all(...)\n");
+        for (size_t i = 0; i < bk.schemas.len; ++i) {
+            print_string(&book_buf, "#define %s(...)\n", bk.schemas.items[i].derive_attr);
+        }
+        print_string(&book_buf, "#endif // __DERIVES_H__\n");
+        write_entire_file(tfmt("%s/derives.h", bk.conf.output_dir), &book_buf);
     }
-    print_string(&book_buf, "#endif // __DERIVES_H__\n");
-    write_entire_file(tfmt("%s/derives.h", bk.conf.output_dir), &book_buf);
 
     if (bk.conf.include_dir != NULL) {
         DIR* input_dir = opendir(bk.conf.include_dir); // TODO: this is our main POSIX-dependent piece of code, perhaps write a cross-platform wrapper 
@@ -835,7 +844,7 @@ int main(int argc, char** argv) {
         closedir(input_dir);
     }
 
-    if (bk.entries.len <= 0) ret_clean(0);
+    if (bk.entries.len <= 0 || (output_mode == O_DIR && bk.conf.output_dir == NULL)) ret_clean(0);
 
     size_t file_idx = 0;
     book_buf.len = 0;
@@ -1758,6 +1767,93 @@ bool output_mode_cmd(int* i, int argc, char** argv) {
     }
 
     return false;    
+}
+
+bool gen_ext_cmd(int* i, int argc, char** argv) {
+    char* src = NULL;
+    char* out = NULL;
+
+    if (++*i < argc) {
+        src = argv[*i];
+    }
+
+    if (++*i < argc) {
+        out = argv[*i];
+    }
+
+    if (src == NULL || out == NULL) return false;
+    
+    const char* def_str = "#ifndef __BK_GEN_EXT_DEFINITIONS";
+    size_t def_strlen = strlen(def_str);
+    const char* endif_str = "#endif // __BK_GEN_EXT_DEFINITIONS";
+    size_t endif_strlen = strlen(def_str);
+
+    char* save_start = NULL;
+    char* save_end = NULL;
+
+    String src_file = {0}; // alloc
+    if (!read_entire_file(src, &src_file) || src_file.len == 0) {
+        if (src_file.items != NULL) free(src_file.items);
+        return false;
+    }
+
+    for (size_t i = 0; i < src_file.len; ++i) {
+        char* p = src_file.items + i;
+        size_t p_len = strlen(p);
+        if (save_start == NULL && p_len >= def_strlen && strncmp(def_str, p, def_strlen) == 0) {
+            save_start = p;
+        }
+        if (save_end == NULL && save_start != NULL && p_len >= endif_strlen && strncmp(endif_str, p, endif_strlen) == 0) {
+            save_end = p + endif_strlen;
+        }
+    }
+
+    if (save_start == NULL || save_end == NULL) {
+        free(src_file.items);
+        return false;
+    }
+
+    FILE* out_file = fopen(out, "wb");
+    if (!out_file) {
+        bk_log(LOG_ERROR, "Couldn't open file '%s': '%s'\n", out, strerror(errno));
+        free(src_file.items);
+        return false;
+    }
+    fprintf(out_file,
+        "/*\n"
+        "Copyright (c) 2025 Serdar Çoruhlu <serdar.coruhlu@hotmail.com>\n"
+        "\n"
+        "Permission is hereby granted, free of charge, to any\n"
+        "person obtaining a copy of this software and associated\n"
+        "documentation files (the \"Software\"), to deal in the\n"
+        "Software without restriction, including without\n"
+        "limitation the rights to use, copy, modify, merge,\n"
+        "publish, distribute, sublicense, and/or sell copies of\n"
+        "the Software, and to permit persons to whom the Software\n"
+        "is furnished to do so, subject to the following\n"
+        "conditions:\n"
+        "\n"
+        "The above copyright notice and this permission notice\n"
+        "shall be included in all copies or substantial portions\n"
+        "of the Software.\n"
+        "\n"
+        "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\n"
+        "ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\n"
+        "TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\n"
+        "PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\n"
+        "SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\n"
+        "CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\n"
+        "OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\n"
+        "IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\n"
+        "DEALINGS IN THE SOFTWARE.\n"
+        "*/\n"
+    );
+    fwrite(save_start, save_end - save_start, sizeof *save_start, out_file);
+
+    fclose(out_file);
+    
+    free(src_file.items);
+    return true;
 }
 
 bool generics_cmd(int* i, int argc, char** argv) {
