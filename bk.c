@@ -1130,7 +1130,7 @@ static Command commands[] = {
         .exec_c = enable_prefix_cmd
     },
 };
-const static size_t commands_count = sizeof commands / sizeof *commands;
+static const size_t commands_count = sizeof commands / sizeof *commands;
 
 #define bk_printf(...) (bk.conf.silent ? 0 : printf(__VA_ARGS__))
 

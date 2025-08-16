@@ -49,6 +49,7 @@ And this is how you can build it:
 ```console
     $ git clone https://github.com/serd223/bookkeeper.git && cd bookkeeper
     $ mkdir build && mkdir gen
+    $ # Uses `clang` by default, set `CC` in the `Makefile` if you prefer another compiler.
     $ make quick
     $ ./build/quick
 ```
@@ -71,6 +72,8 @@ typedef struct {
 ```
 (See [people.h](./examples/people.h))
 
+By default, `bk` places generated files next to their source files (mirroring the original file structure). These generated files have the following naming schema: `original_file_name.bk.h`.
+
 For further explanation regarding the provided example, check out the [Usage section of User Documentation](./docs/usage.md).
 
 # Documentation
@@ -90,8 +93,9 @@ This documentation is the general documentation of the internals of `bookkeeper`
 
 # Build Instructions
 ## Prerequisites
- - [clang](https://releases.llvm.org/download.html)
  - [git](https://git-scm.com/)
+ - [gnu make](https://www.gnu.org/software/make/)
+ - A C compiler (defaults to `clang`, change `CC` in [Makefile](./Makefile) if you prefer `gcc` or another)
 
 ## Instructions
 First, you will need to clone this repository and `cd` into the repository's root directory:
@@ -130,3 +134,5 @@ In order to build and test the provided extension example, you can run: (auto-ge
     $ ./build/bk_ext -I ./examples -o ./gen -om dir
 ```
 You can then inspect the generated files inside the `gen` folder to see the generated example schema functions.
+
+Check out [Usage](./docs/usage.md) or the [examples folder](./examples/)!

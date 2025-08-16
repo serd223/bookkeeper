@@ -1,3 +1,5 @@
+CC = clang
+
 PWD = $(shell pwd)
 CFLAGS = -I$(PWD)/thirdparty/ -Wall -Wextra
 
@@ -36,22 +38,22 @@ gen/bk_ext.h: build/bk
 	./build/bk --gen-ext ./bk.c ./gen/bk_ext.h -dW no-output
 
 build/bk: bk.c ./thirdparty/stb_c_lexer.h
-	clang $(CFLAGS) bk.c -o ./build/bk
+	$(CC) $(CFLAGS) bk.c -o ./build/bk
 
 build/bk_debug: bk.c ./thirdparty/stb_c_lexer.h
-	clang $(CFLAGS) bk.c -g -DDEBUG -o ./build/bk_debug
+	$(CC) $(CFLAGS) bk.c -g -DDEBUG -o ./build/bk_debug
 
 build/quick: ./examples/people.h ./examples/quick.c gen
-	clang $(CFLAGS) -g ./examples/quick.c -o ./build/quick
+	$(CC) $(CFLAGS) -g ./examples/quick.c -o ./build/quick
 
 build/dump_people: ./examples/people.h ./examples/dump_people.c gen
-	clang $(CFLAGS) -g ./examples/dump_people.c -o ./build/dump_people
+	$(CC) $(CFLAGS) -g ./examples/dump_people.c -o ./build/dump_people
 
 build/parse_people: ./examples/people.h ./examples/parse_people.c gen ./thirdparty/cJSON.c ./thirdparty/cJSON.h
-	clang $(CFLAGS) -g ./examples/parse_people.c ./thirdparty/cJSON.c -o ./build/parse_people
+	$(CC) $(CFLAGS) -g ./examples/parse_people.c ./thirdparty/cJSON.c -o ./build/parse_people
 
 build/bk_ext: gen/bk_ext.h
-	clang $(CFLAGS) ./examples/bk_ext.c -o ./build/bk_ext
+	$(CC) $(CFLAGS) ./examples/bk_ext.c -o ./build/bk_ext
 
 clean:
 	rm -f ./examples/*.bk.h
