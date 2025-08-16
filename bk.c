@@ -1462,10 +1462,13 @@ int main(int argc, char** argv) {
         }
         if (bk.conf.generics) {
             book_buf.len = 0;
-            print_string(&book_buf, "#ifndef __GENERICS_H__\n");
-            print_string(&book_buf, "#define __GENERICS_H__\n");
+            // print_string(&book_buf, "#ifndef __GENERICS_H__\n");
+            // print_string(&book_buf, "#define __GENERICS_H__\n");
             for (size_t i = 0; i < all_types.len; ++i) {
                 const char* t_name = all_types.items[i].name;
+                print_string(&book_buf, "#ifdef ___BK_IF_TYPE_%s\n", t_name);
+                print_string(&book_buf, "#undef ___BK_IF_TYPE_%s\n", t_name);
+                print_string(&book_buf, "#endif // ___BK_IF_TYPE_%s\n", t_name);
                 print_string(&book_buf, "#ifdef ___BK_INCLUDE_TYPE_%s\n", t_name);
                 print_string(&book_buf, "#define ___BK_IF_TYPE_%s(x) x,\n", t_name);
                 print_string(&book_buf, "#else // ___BK_INCLUDE_TYPE_%s\n", t_name);
@@ -1491,11 +1494,17 @@ int main(int argc, char** argv) {
                 }
 
                 // dump code
+                print_string(&book_buf, "#ifdef ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES\n", s_name);
+                print_string(&book_buf, "#undef ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES\n", s_name);
+                print_string(&book_buf, "#endif // ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES\n", s_name);
                 print_string(&book_buf, "#define ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES\\\n", s_name);
                 for (size_t j = 0; j < all_types.len; ++j) {
                     const char* t_name = all_types.items[j].name;
                     print_string(&book_buf, "    ___BK_IF_TYPE_%s(%s*: "BK_DUMP_LOWER"_%s_%s)\\\n", t_name, t_name, s_name, t_name);
                 }
+                print_string(&book_buf, "\n#ifdef "BK_DUMP_LOWER"_%s\n", s_name);
+                print_string(&book_buf, "\n#undef "BK_DUMP_LOWER"_%s\n", s_name);
+                print_string(&book_buf, "\n#endif // "BK_DUMP_LOWER"_%s\n", s_name);
                 print_string(&book_buf, "\n#define "BK_DUMP_LOWER"_%s(item, dst)\\\n", s_name);
                 print_string(&book_buf, "_Generic((item), ___BK_GENERIC_"BK_DUMP_UPPER"_%s_CASES default: NULL)((item), (dst))\n", s_name);
 
@@ -1530,11 +1539,17 @@ int main(int argc, char** argv) {
                 }
 
                 // parse code
+                print_string(&book_buf, "#ifdef ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES\n", s_name);
+                print_string(&book_buf, "#undef ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES\n", s_name);
+                print_string(&book_buf, "#endif // ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES\n", s_name);
                 print_string(&book_buf, "#define ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES\\\n", s_name);
                 for (size_t j = 0; j < all_types.len; ++j) {
                     const char* t_name = all_types.items[j].name;
                     print_string(&book_buf, "    ___BK_IF_TYPE_%s(%s*: "BK_PARSE_LOWER"_%s_%s)\\\n", t_name, t_name, s_name, t_name);
                 }
+                print_string(&book_buf, "\n#ifdef "BK_PARSE_LOWER"_%s\n", s_name);
+                print_string(&book_buf, "\n#undef "BK_PARSE_LOWER"_%s\n", s_name);
+                print_string(&book_buf, "\n#endif // "BK_PARSE_LOWER"_%s\n", s_name);
                 print_string(&book_buf, "\n#define "BK_PARSE_LOWER"_%s(src, len, dst)\\\n", s_name);
                 print_string(&book_buf, "_Generic((dst), ___BK_GENERIC_"BK_PARSE_UPPER"_%s_CASES default: NULL)((src), (len), (dst))\n", s_name);
 
@@ -1554,7 +1569,7 @@ int main(int argc, char** argv) {
                 }
 
             }
-            print_string(&book_buf, "#endif // __GENERICS_H__\n");
+            // print_string(&book_buf, "#endif // __GENERICS_H__\n");
             write_entire_file(tfmt("%s/generics.h", bk.conf.output_dir), &book_buf);
         }
     } while(bk.conf.watch_mode);
