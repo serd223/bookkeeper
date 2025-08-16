@@ -8,9 +8,12 @@ FLAGS_LIST = $(subst $(space),$(comma),$(CFLAGS))
 a := $(file > .clangd, CompileFlags:)
 b := $(file >> .clangd, 	Add: [$(FLAGS_LIST)])
 
-.PHONY: default clean dump gen parse bk all quick
+.PHONY: default clean dump gen parse bk all quick docs
 
 default: build/bk
+
+docs:
+	doxygen
 
 bk: ./build/bk
 

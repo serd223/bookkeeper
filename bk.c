@@ -25,6 +25,11 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
+
+/** @file bk.c
+    The main source file of bookkeeper.
+*/
+
 #ifndef __BOOKKEEPER_GEN_C__
 #define __BOOKKEEPER_GEN_C__
 
@@ -51,44 +56,195 @@ DEALINGS IN THE SOFTWARE.
 #define __BK_GEN_EXT_DEFINITIONS
 
 // This would typically be in drives.h, but the single file limitation strikes again
+/** @cond */
 #define derive_bkconf(...)
+/** @endcond */
 
+/**
+ * @brief The general config of `bookkeeper`. Can be configured via command line arguments or configuration files.
+*/
 typedef struct {
+    /**
+     * @brief Is expected to be either "mirror" or "dir". ("mirror" by default)
+     *
+     * The program will exit with a nonzero exit code if this string is something else.
+     *
+     * "mirror" mode puts files that were generated from the user source code
+     * next to its source file, "mirror"ing the original file structure.
+     *
+     * "dir" mode puts all generated files inside the specified `BkConfig::output_dir`.
+    */
     char* output_mode;
+
+    /**
+     * @brief Enables the experimental generated generic macro API. (false by default)
+     *
+     * This API is still very experimental and isn't stabilized.
+    */
     bool generics;
+
+    /** @brief Disables all program output. (true by default) */
     bool silent;
+
+    /**
+     * @brief Enables verbose output. (false by default)
+     *
+     * When disabled, @link LogLevel `LogLevel::LOG_ERROR`@endlink and
+     * @link LogLevel `LogLevel::LOG_WARN`@endlink level logs will be displayed without
+     * the file location.
+     *
+     * When enabled, logs of all levels are displayed and they all contain file
+     * location information.
+    */
     bool verbose;
+
+    /**
+     * @brief Enables the warning that is emitted when an unknown attribute is found inside
+     *        analyzed source code. (true by default)
+    */
     bool warn_unknown_attr;
+
+    /** @brief Enables the warning that is emitted when no files were included (false by default) */
     bool warn_no_include;
+
+    /** @brief Enables the warning that is emitted when no `output_directory` was specified (true by default) */
     bool warn_no_output;
+
+    /** @brief Disables the generation of "dump" functions during code generation (false by default) */
     bool disable_dump;
+
+    /** @brief Disables the generation of "parse" functions during code generation (false by default) */
     bool disable_parse;
+
+    /**
+     * @brief Enables the experimental "disabled by default" API for generated code. (false by default)
+     *
+     * When enabled, all features in the generated code are disabled and users
+     * are expected to pick and choose the features they want to enable
+     * and enable them with BK_ENABLE_* macros.
+     *
+     * Since this mode introduces a lot of additional complexity for users,
+     * it may also be called "advanced mode".
+     *
+     * This mode might be temporarily removed for the first release of `bookkeeper`.
+     *
+     * This API is still very experimental and isn't stabilized.
+    */
     bool disabled_by_default;
+
+    /** @brief Enables watch mode that "watches" your source files and auto-generates code automatically (false by default) */
     bool watch_mode;
+
+    /**
+     * Simple hack to prevent watch mode from hogging resources. The tool waits `BkConfig::watch_delay` seconds before checking
+     * if any source files were modified to regenerate code (5 by default)
+    */
     long watch_delay;
+
+    /**
+     * @brief The macro that is used inside generated "dump" functions to output into the provided "dst" buffer.
+     *        ("BK_FMT" by default)
+    */
     char* gen_fmt_macro;
+
+    /**
+     * @brief The macro that is used inside generated code to include implementation in stb-style.
+     *        ("BK_IMPLEMENTATION" by default)
+    */
     char* gen_implementation_macro;
+
+    /**
+     * @brief The macro that is used inside generated "dump" functions to denote the type of the "dst" parameter.
+     *        ("BK_FMT_DST_t" by default)
+    */
     char* gen_fmt_dst_macro;
+
+    /**
+     * @brief The macro that is used inside generated "dump" functions to denote the type of the "offset" local
+     *        variable that is used inside the function. ("BK_OFFSET_t" by default)
+    */
     char* offset_type_macro;
+
+    /**
+     * @brief The prefix that is used to generate macros that disable specific parts of generated code
+     *        ("BK_DISABLE_" by default)
+     *
+     * These generated macros can be:
+     *  - $prefix$DUMP: Disables dump functionality.
+     *  - $prefix$PARSE: Disables parse functionality.
+     *  - $prefix$$type$: Disables all functionality that belongs to $type$.
+     *  - $prefix$$type$_DUMP: Disables dump functionality that belongs to $type$.
+     *  - $prefix$$type$_PARSE: Disables parse functionality that belongs to $type$.
+     *  - $prefix$$type$_$schema$: Disables all functionality that works on $schema$ and belongs to $type$.
+     *  - $prefix$$type$_$schema$_DUMP: Disables dump functionality that works on $schema$ and belongs to $type$.
+     *  - $prefix$$type$_$schema$_PARSE: Disables parse functionality that works on $schema$ and belongs to $type$.
+     *  - $prefix$$schema$: Disables all functionality that works on $schema$.
+     *  - $prefix$$schema$_DUMP: Disables dump functionality that works on $schema$.
+     *  - $prefix$$schema$_PARSE: Disables parse functionality that works on $schema$.
+    */
     char* disable_macro_prefix;
+
+    /**
+     * @brief The prefix that is used to generate enable macros for the "disabled by default" API.
+     *        ("BK_ENABLE_" by default)
+     *
+     * This API is still very experimental and isn't stabilized.
+    */
     char* enable_macro_prefix;
+
+    /**
+     * @brief Derives all possible schemas for every struct that is analyzed. (false by default)
+     *
+     * Mainly used for debugging issues regarding generated code.
+    */
     bool derive_all;
+
+    /**
+     * @brief Denotes the directory that will be searched for '.c' or '.h' files to analyze.
+     *
+     * Set to NULL if no include directory was specified.
+    */
     char* include_dir;
-    char* include_files; // This field is only used for loading include files from configs
+
+    /**
+     * @brief Only used when reading input files as a comma seperated list from configuration files.
+     *
+     * Set to NULL if no config file was loaded, or this field wasn't set inside the loaded config file.
+    */
+    char* include_files;
+
+    /**
+     * @brief Denotes the directory that will be used to output most(*) generated files.
+     *
+     * Only used for 'derives.h' and 'generics.h' when `BkConfig::output_mode` is "mirror".
+     *
+     * (*): The 'out' file specified inside the '--gen-ext' flag isn't placed inside this directory
+     *      and that path is directly passed to `fopen`.
+    */
     char* output_dir;
 } BkConfig derive_bkconf();
 
+/**
+ * @brief Sized dynamic string. Just a dynamic array of characters.
+ *
+ * Its memory is dynamically allocated by macros like @link push_da `push_da`@endlink
+ * and @link print_string `print_string`@endlink.
+ *
+ * You are expected to `free` that memory yourself.
+*/
 typedef struct {
     char* items;
     size_t len;
     size_t cap;
 } String;
 
+/** @brief Kind tag for `CType` */
 typedef enum {
     CPRIMITIVE,
     CEXTERNAL
 } CType_Kind;
 
+/** @brief Defines different primitive C types. */
 typedef enum {
     CINT = 1,
     CUINT,
@@ -100,81 +256,237 @@ typedef enum {
     CSTRING
 } CPrimitive;
 
+/**
+ * @brief Defines a C type. Acts like a tagged union with the `CType::kind` tag.
+ *
+ * This struct isn't a tagged union to keep its size predictable (Mainly for use in dynamic arrays).
+*/
 typedef struct {
+    /** @brief Tag that denotes which variant the current instance of this type belongs to. */
     CType_Kind kind;
-    char* name; // CEXTERNAL
-    CPrimitive type;  // CPIRIMITIVE
+
+    /**
+     * @brief Denotes the name of the external type.
+     *
+     * %Field of variant @link CType_Kind `CType_Kind::CEXTERNAL`. @endlink
+    */
+    char* name;
+
+    /**
+     * @brief Used to identify the primitive type of this type.
+     *
+     * %Field of variant @link CType_Kind `CType_Kind::CPRIMITIVE`. @endlink
+    */
+    CPrimitive type;
 } CType;
 
+/** @brief Dynamic array of `CType` */
 typedef struct {
     CType* items;
     size_t len;
     size_t cap;
 } CTypes;
 
+/**
+ * @brief Defines a field stored inside `CCompound` types.
+*/
 typedef struct {
+    /** @brief The identifier that was used to declare this field inside the analyzed source file. */
     char* name;
+
+    /**
+     * @brief Optionally declared inside the source file with the 'tag' attribute.
+     *
+     * If it was declared inside the source file, it is set to the string specified inside the attribute invocation. If
+     * a special tag was not declared inside the source file, `Field::tag` is set to NULL and code generation uses the `Field::name`
+     * field for serialization.
+    */
     char* tag;
+
+    /** @brief The @link CType type@endlink of this field. */
     CType type;
 } Field;
 
+/** @brief Dynamic array of `Field` */
 typedef struct {
     Field* items;
     size_t len;
     size_t cap;
 } Fields;
 
+/**
+ * @brief Defines a compund C type with fields.
+*/
 typedef struct {
     int derived_schemas; // TODO: this bitfield method puts a (somewhat low) hard limit on the amount of allowed schmeas
     Fields fields;
     char* name;
 } CCompound;
 
+/** @brief Dynamic array of `CCompound` */
 typedef struct {
     CCompound* items;
     size_t len;
     size_t cap;
 } CCompounds;
 
+/** @brief Defines a schema object. */
 typedef struct {
+    /**
+     * @brief Pointer to function that will be used to generate the declarations of "dump"
+     *        functions for the specified type.
+     *
+     * The convention for the signatures of generated functions here is `void dump_$schema.name$_$type$($type$* item, $dst_type$ dst)`
+     *
+     * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
+     *        macro available to both this source file and extension authors can be used to output into this buffer.
+     * @param ty The type that this function is meant to generate code for, contains all necessary info for code generation.
+     * @param dst_type The type of the 'dst' parameter that is meant to be used for generated "dump" functions.
+     * @return Should return the total amount of declarations.
+    */
     size_t (*gen_dump_decl)(String* book_buf, CCompound* ty, const char* dst_type);
+    /**
+     * @brief Pointer to function that will be used to generate the declarations of "parse"
+     *        functions for the specified type.
+     *
+     * The convention for the signatures of generated functions here is `int parse_$schema.name$_$type$(const char* src, unsigned long len, $type$* dst)`
+     *
+     * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
+     *        macro available to both this source file and extension authors can be used to output into this buffer.
+     * @param ty The type that this function is meant to generate code for, contains all necessary info for code generation.
+     * @return Should return the total amount of declarations.
+    */
     size_t (*gen_parse_decl)(String* book_buf, CCompound* ty);
+    /**
+     * @brief Pointer to function that will be used to generate the implementations of "dump"
+     *        functions for the specified type.
+     *
+     * The convention for the signatures of generated functions here is `int parse_$schema.name$_$type$(const char* src, unsigned long len, $type$* dst)`
+     *
+     * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
+     *        macro available to both this source file and extension authors can be used to output into this buffer.
+     * @param ty The type that this function is meant to generate code for, contains all necessary info for code generation.
+     * @param dst_type The type of the 'dst' parameter that is meant to be used for generated "dump" functions.
+     * @param fmt_macro The name of the macro that is meant to be used **inside generated code** to output into the 'dst' buffer.
+    */
     void (*gen_dump_impl)(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+    /**
+     * @brief Pointer to function that will be used to generate the implementations of "parse"
+     *        functions for the specified type.
+     *
+     * The convention for the signatures of generated functions here is `void dump_$schema.name$_$type$($type$* item, $dst_type$ dst)`
+     *
+     * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
+     *        macro available to both this source file and extension authors can be used to output into this buffer.
+     * @param ty The type that this function is meant to generate code for, contains all necessary info for code generation.
+    */
     void (*gen_parse_impl)(String* book_buf, CCompound* ty);
+    /**
+     * @brief Defines the name of the 'attribute macro' that will be generated inside 'derives.h'
+     *        for users to derive functionality for this schema.
+    */
     const char* derive_attr;
+    /**
+     * @brief Defines the unique name for this schema.
+    */
     const char* name;
 } Schema;
 
+/** @brief Dynamic array for `Schema`. */
 typedef struct {
     Schema* items;
     size_t len;
     size_t cap;
 } Schemas;
 
+/**
+ * @brief Defines a source file meant to be analyzed.
+ *
+ * The contents of `Entry::full` and `Entry::name` aren't validated in any way and are expected to be
+ * assigned correctly.
+*/
 typedef struct {
+    /**
+     * @brief The canonical path to the entry file.
+     *
+     * Used during logging and generating unique hashes for generated files.
+    */
     char* full;
+    /**
+     * @brief The short display name for the entry file.
+     *
+     * Used for logging and human readable generated code.
+     * Ideally would be the last part of a path string.
+    */
     char* name;
+    /**
+     * @brief The modification time (in seconds) of the entry file in the file system.
+     *
+     * When using `stat` on POSIX, this field is equivalent to `file_stat.st_mtim.tv_sec`.
+    */
     time_t sys_modif;
+    /**
+     * Assigned to the time elapsed since the UNIX epoch (in seconds)
+     * whenever this file is analyzed (even if the analysis fails).
+    */
     time_t last_analyzed;
 } Entry;
 
+/** @brief Dynamic array for `Entry`. */
 typedef struct {
     Entry* items;
     size_t len;
     size_t cap;
 } Entries;
 
+/** @brief General state of `bookkeeper`. */
 typedef struct {
+    /** @brief The current configuration for `bookkeeper`. */
     BkConfig conf;
+
+    /** @brief Dynamic array of all input files that were discovered or supplied. */
     Entries entries;
+
+    /** @brief Dynamic array of all schemas that were defined. */
     Schemas schemas;
 } BkState;
 
+/**
+ * @var bk
+ * Global static `BkState` instance. (not thread safe)
+*/
 static BkState bk = {0};
+/**
+ * @var tmp_str
+ * Global static temporary string buffer. (not thread safe)
+*/
 static char tmp_str[4096];
+
+/**
+ * @brief Uses the global @link tmp_str `tmp_str`@endlink buffer with `sprintf` to quickly format a string.
+ *
+ * The `tmp_str` gets constantly overwritten with every call to this macro or other functions that use the buffer
+ * so this macro shouldn't be used to generate strings that are meant to be stored.
+ *
+ * @return Returns the pointer to the global `tmp_str` buffer so this macro can easily be used inside expressions.
+*/
 #define tfmt(...) (sprintf(tmp_str, __VA_ARGS__), tmp_str)
+
+/**
+ * @brief Internally uses the @link tfmt `tfmt`@endlink macro to format a string, but this macro also duplicates that string for safe storage.
+ *
+ * Has to be manually free'd with `free`.
+*/
 #define fmt(...) strdup(tfmt(__VA_ARGS__))
 
+/**
+ * @brief Logging system of `bookkeeper`.
+ *
+ * @param level Level of logging meant to be used for this call. Should be a member of `LogLevel`.
+ * @param source The path to the source file name that will be used while logging.
+ * @param line The line number that will be used while logging.
+ * @param ... `printf` style format arguments
+*/
 #define bk_log_loc(level, source, line, ...) do {\
     if (!bk.conf.silent) {\
         switch (level) {\
@@ -205,14 +517,31 @@ static char tmp_str[4096];
     }\
 } while(0)
 
+/**
+ * @brief Wrapper around @link bk_log_loc `bk_log_loc`,@endlink used for internal logging.
+ *
+ * @param level Level of logging meant to be used for this call. Should be a member of `LogLevel`.
+ * @param ... `printf` style format arguments
+*/
 #define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
 
+/** @brief Enumeration for different logging levels that are used in @link bk_log_loc `bk_log_loc`@endlink and @link bk_log `bk_log`@endlink. */
 typedef enum {
     LOG_INFO,
     LOG_WARN,
     LOG_ERROR,
-} Log_Level;
+} LogLevel;
 
+/**
+ * @brief Macro that can push elements into arbitrary dynamic arrays.
+ *
+ * @param arr Pointer to a struct with `items`, `len` and `cap` fields.
+ *            `*arr` can be zero initialized but `items` must be a valid pointer
+ *            and must be able to be reallocated with `realloc` if it is non NULL.
+ *            `items` is automatically allocated if it is NULL.
+ *
+ * @param item Assumed to be the same type as `*arr->items`.
+*/
 #define push_da(arr, item) do {                                                     \
     if ((arr)->len + 1 >= (arr)->cap) {                                             \
         if ((arr)->cap > 0) {                                                       \
@@ -229,6 +558,12 @@ typedef enum {
     (arr)->items[(arr)->len++] = (item);                                            \
 } while(0)
 
+/**
+ * @brief Macro that can be used like `fprintf` but with `String`s.
+ *
+ * @param str Assumed to be of type `String*`.
+ * @param ... `printf` style format arguments.
+*/
 #define print_string(str, ...) do {                                                 \
     int len = sprintf(tmp_str, __VA_ARGS__);                                        \
     if ((str)->cap <= ((unsigned long)len + (str)->len)) {                          \
@@ -255,18 +590,34 @@ __BK_API unsigned long djb2(const char* s);
 __BK_API bool entry_from_file(const char* file_name, Entry* out);
 
 // Cleanup functions
+/** @brief free's the contents of a `CCompound` */
 __BK_API void free_ccompund(CCompound cc);
+/** @brief free's the contents of a `Field` */
 __BK_API void free_field(Field f);
+/** @brief free's the contents of a `CType` */
 __BK_API void free_ctype(CType ct);
+/** @brief free's the contents of a `Entry` */
 __BK_API void free_entry(Entry e);
 
-// Parsing C code
+/**
+ * @defgroup cparse Parsing C code
+ * @brief All definitions and declarations related to parsing C code.
+ * @addtogroup cparse
+ * @{
+*/
+
+/** @brief Kind tag for `Word` */
 typedef enum {
     WORD_TOK,
     WORD_ID,
     WORD_END
 } WordKind;
 
+/**
+ * @brief Tagged union that is used to refer to identifiers or tokens in the same type.
+ *
+ * This type is mainly for use in @link peek_c `peek_c`@endlink.
+*/
 typedef struct {
     WordKind kind;
     union {
@@ -275,31 +626,123 @@ typedef struct {
     };
 } Word;
 
+/**
+ * @brief Macro that is used to generate identifier parameters for @link peek_c `peek_c`@endlink.
+ *
+ * @param s Assumed to be of type `const char*`. This is the string representation of the identifier.
+ * @return Expands to a `Word` instance of kind @link WordKind `WordKind::WORD_ID`@endlink.
+*/
 #define ID(s) (Word){.kind = WORD_ID, .id=s}
+
+/**
+ * @brief Macro that is used to generate token parameters for @link peek_c `peek_c`@endlink.
+ *
+ * @param t Assumed to be of type `int`. This is the integer value of the token.
+ * @return Expands to a `Word` instance of kind @link WordKind `WordKind::WORD_TOK`@endlink.
+*/
 #define TK(t) (Word){.kind = WORD_TOK, .tok=t}
+
+/**
+ * @brief Macro that is used to generate the terminator for the parameter list of @link peek_c `peek_c`@endlink.
+ *
+ * @return Expands to a `Word` instance of kind @link WordKind `WordKind::WORD_END`@endlink.
+*/
 #define WEND (Word){.kind = WORD_END}
 
+/** @cond */
 __BK_API bool va_get_expect_ids(stb_lexer* lex, va_list args);
 __BK_API bool va_get_expect_tokens(stb_lexer* lex, va_list args);
 __BK_API bool va_get_expect_c(stb_lexer* lex, va_list args);
+/** @endcond */
+
+/**
+ * @brief Variadic function that looks forward to see if the source file matches the provided identifiers.
+ *
+ * This macro also returns `false` if it encounters non-identifier tokens.
+ *
+ * @param lex Pointer to the stb_lexer instance that contains the tokens.
+ * @param ... indetifiers of type `const char*` to check for. These parameters should end with NULL.
+ * @return Returns `true` if the source file matched the provided indetifiers, `false` otherwise.
+*/
 __BK_API bool peek_ids(stb_lexer* lex, ...);
+
+/**
+ * @brief Variadic function that looks forward to see if the source file matches the provided tokens.
+ *
+ * @param lex Pointer to the stb_lexer instance that contains the tokens.
+ * @param ... tokens of type `int` to check for. These parameters should end with -1.
+ * @return Returns `true` if the source file matched the provided tokens, `false` otherwise.
+*/
 __BK_API bool peek_tokens(stb_lexer* lex, ...);
+
+/**
+ * @brief Variadic function that looks forward to see if the source file matches the provided `Word`s.
+ *
+ * Used in combination with the @link ID `ID`,@endlink @link TK `TK`,@endlink and @link WEND `WEND`@endlink macros for its parameters.
+ *
+ * @param lex Pointer to the stb_lexer instance that contains the tokens.
+ * @param ... `Word`s to check for. These parameters should end with a `Word` of kind @link WordKind `WordKind::WORD_END` @endlink
+ * @return Returns `true` if the source file matched the provided `Word`s, `false` otherwise.
+*/
 __BK_API bool peek_c(stb_lexer* lex, ...);
+
+/**
+ * @brief Variadic function that gets tokens from the source file and compares them against the provided tokens.
+ *
+ * @param lex Pointer to the stb_lexer instance that contains the tokens.
+ * @param ... tokens of type `int` to check for. These parameters should end with -1.
+ * @return Returns `true` if the source file matched the provided tokens, `false` otherwise.
+*/
 __BK_API bool get_expect_tokens(stb_lexer* lex, ...);
+
+/**
+ * @brief Variadic function that gets identifiers from the source file and compares them against the provided identifiers.
+ *
+ * This macro also returns `false` if it encounters non-identifier tokens.
+ *
+ * @param lex Pointer to the stb_lexer instance that contains the tokens.
+ * @param ... indetifiers of type `const char*` to check for. These parameters should end with NULL.
+ * @return Returns `true` if the source file matched the provided indetifiers, `false` otherwise.
+*/
 __BK_API bool get_expect_ids(stb_lexer* lex,...);
+
+/** @cond */
 bool get_expect_c(stb_lexer* lex,...); // Unused for now
+/** @endcond */
+
+/**
+ * @brief Parses the provided file and appends all types it could find to the provided `CCompounds` dynamic array.
+ *
+ * This function doesn't return on errors and instead just logs them and continues to try parsing.
+ *
+ * @param schemas Dynamic array that contains all loaded schemas.
+ * @param content Contents of the source file.
+ * @param out Dynamic array for appending analyzed types.
+ * @param derive_all Whether the `BkConfig::derive_all` option is on or not.
+*/
 __BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all);
+/** @} */
 
-// Command line parsing
-static char* parse_list(char** src, char sep, size_t* entry_len);
+/**
+ * @defgroup commandline Command Line
+ * @brief All definitions and declarations related to parsing commandline arguments and executing commands.
+*/
 
-// Code generation
-#define BK_DUMP_UPPER "DUMP"
-#define BK_PARSE_UPPER "PARSE"
-#define BK_DUMP_LOWER "dump"
-#define BK_PARSE_LOWER "parse"
+/**
+ * @ingroup commandline
+ * @brief Parses a list from the command line.
+ *
+ * Users are meant to call this function in a loop until its return value equals to NULL.
+ *
+ * @param src Array of command line arguments, equal to the `argv` from `main`.
+ * @param sep Seperator character for the list.
+ * @param entry_len Out parameter that is assigned to the current entry's length.
+ * @return NULL when there are no more entries in the list or the list couldn't be parsed.
+ *         Otherwise, returns a *sized string*. This string is **not null terminated**.
+*/
+__BK_API char* parse_list(char** src, char sep, size_t* entry_len);
 
-
+/** @cond */
 #define gen_def_guard(fntype)\
 if (bk.conf.disabled_by_default) {\
     print_string(book_buf, "\n#if defined(%s"fntype")", bk.conf.enable_macro_prefix);\
@@ -342,48 +785,123 @@ if (bk.conf.disabled_by_default) {\
     print_string(book_buf, "\n#endif // %s%s_%s\n", bk.conf.disable_macro_prefix, ty->name, schema->name);\
     print_string(book_buf, "\n#endif // %s%s_"fntype"\n", bk.conf.disable_macro_prefix, schema->name);\
     print_string(book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, schema->name);\
-}\
+}
+/** @endcond */
 
+#define BK_DUMP_UPPER "DUMP"
+#define BK_PARSE_UPPER "PARSE"
+#define BK_DUMP_LOWER "dump"
+#define BK_PARSE_LOWER "parse"
+
+/**
+ * @defgroup codegen Code Generation
+ * @brief Code generation functions.
+ *
+ * These functions iterate over the provided `schemas` dynamic array and
+ * call the respective function stored inside each schema. For more information
+ * on the specifics of these functions, see `Schema`.
+ *
+ * @addtogroup codegen
+ * @{
+*/
 size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type);
 size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty);
 void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
 void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty);
+/** @} */
 
-// JSON generation
+/**
+ * @defgroup jsoncodegen JSON Schema Code
+ * @brief All definitions and declarations related to the included JSON `Schema`.
+ * @addtogroup jsoncodegen
+ * @{
+*/
 size_t gen_json_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
 size_t gen_json_parse_decl(String* book_buf, CCompound* ty);
 void gen_json_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
 void gen_json_parse_impl(String* book_buf, CCompound* ty);
+/** @} */
 
-// Debug generation
+/**
+ * @defgroup debugcodegen Debug Schema Code
+ * @brief All definitions and declarations related to the included Debug `Schema`.
+ * @addtogroup debugcodegen
+ * @{
+*/
 size_t gen_debug_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
 void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+/** @} */
 
 #ifdef BK_ENABLE_BK_CONF_GEN
-// bkconf generation
+/**
+ * @defgroup bkconfcodegen bkconf Schema Code
+ * @brief All definitions and declarations related to the included bkconf `Schema`.
+ * @addtogroup bkconfcodegen
+ * @{
+*/
 size_t gen_bkconf_parse_decl(String* book_buf, CCompound* ty);
 void gen_bkconf_parse_impl(String* book_buf, CCompound* ty);
+/** @} */
 #endif // BK_ENABLE_BK_CONF_GEN
 
-// Generated code, generated by enabling `BK_ENABLE_BK_CONF_GEN`
-int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst);
 
+/**
+ * @defgroup generatedcode Generated Code
+ * @brief Code that was generated using `bk`.
+ *
+ * Generated by enabling `BK_ENABLE_BK_CONF_GEN`
+ *
+ * @addtogroup generatedcode
+ * @{
+*/
+int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst);
+/** @} */
+
+/** @brief Defines different output modes. */
 typedef enum {
+    /** @brief Mirrors the original file structure. Places generated files next to their source files. */
     O_MIRROR,
+
+    /** @brief Places all generated files inside the provided `output-directory`. */
     O_DIR,
+
     // O_FILE // TODO: implement optional single-file output
 } OutputMode;
 
-// Command line arguments
+/**
+ * @ingroup commandline
+ * @brief Defines a command that can be executed from the commandline.
+*/
 typedef struct {
+    /** @brief The name of this command displayed in help menus. (like 'help') */
     char* name;
+
+    /** @brief The flag used to invoke this command. (like '-h') */
     char* flag;
+
+    /** @brief The usage text for this command. (like '-h <command (optional)>') */
     char* usage;
+
+    /** @brief The explanatory description of this command that is displayed in help menus. */
     char* desc;
+
+    /**
+     * @brief The implementation of this command.
+     *
+     * @param i Pointer to the index counter that is used to iterate over command line arguments.
+     *          `Command`s are expected to increment this counter only if the comamnd accepts argument(s).
+     *          So, a flag like '--silent' _shouldn't_ increment this counter at all.
+     * @param argc The amount of command line arguments, equal to the `argc` from `main`.
+     * @param argv Array of command line arguments, equal to the `argv` from `main`.
+    */
     bool (*exec_c)(int* i, int argc, char** argv);
 } Command;
 
 // If only we had closures in C...
+/** @addtogroup commandline
+ * The *_cmd functions are assigned to the `Command::exec_c` field of their respecive `Command`s.
+ *  @{
+*/
 bool help_cmd(int* i, int argc, char** argv);
 bool config_path_cmd(int* i, int argc, char** argv);
 bool output_mode_cmd(int* i, int argc, char** argv);
@@ -409,7 +927,13 @@ bool gen_fmt_cmd(int* i, int argc, char** argv);
 bool offset_type_cmd(int* i, int argc, char** argv);
 bool disable_prefix_cmd(int* i, int argc, char** argv);
 bool enable_prefix_cmd(int* i, int argc, char** argv);
+/** @} */
 
+/**
+ * @brief Helper macro that does all necessary checks before executing a command. It also prints a usage message if the comamnd fails.
+ *
+ * @return Returns `true` if the command succeeded, `false` otherwise.
+*/
 #define exec_cmd(cmd)\
 ((cmd)->exec_c ? ((cmd)->exec_c(&i, argc, argv) ? true : (bk_printf("Usage of '%s': %s\n", (cmd)->name, (cmd)->usage), false)) : false)
 
@@ -418,6 +942,10 @@ bool enable_prefix_cmd(int* i, int argc, char** argv);
 #define WARN_UNKNOWN_ATTR "unknown-attr"
 #define WARN_LIST WARN_NO_INCLUDE"|"WARN_NO_OUTPUT"|"WARN_UNKNOWN_ATTR
 
+/**
+ * @var commands
+ * Global static array that includes all commands.
+*/
 static Command commands[] = {
     {
         .name = "help",
@@ -430,7 +958,7 @@ static Command commands[] = {
         .name = "config-path",
         .flag = "--config-path",
         .usage = "--config-path <file>",
-        .desc = "Changes the path that will be used to load the configuration file (default value is './bk.conf.conf')",
+        .desc = "Changes the path that will be used to load the configuration file (default value is './bk.conf')",
         .exec_c = config_path_cmd
     },
     {
@@ -610,6 +1138,7 @@ static char* config_path = "./.bk.conf";
 #define BK_FILE_EXT ".bk.h"
 #define BK_FILE_EXT_LEN 5
 
+/** @brief Macro that goto's to the cleanup label before returning inside `main` */
 #define ret_clean(i)\
 do {\
     ret_val = i;\

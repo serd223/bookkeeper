@@ -1,5 +1,6 @@
 build/
 gen/
+docs/doxygen/
 .clangd
 *.bk.h
 derives.h
