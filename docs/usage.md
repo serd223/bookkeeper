@@ -146,101 +146,101 @@ In this case, the generic macro call will expand to `dump_json_MyStruct((&m), (s
 ## Command line options
 
  * help:
-        Usage: `bk -h <command (optional)>`
-        Description: Prints a list of all commands or information about the provided command
+   - Usage: `bk -h <command (optional)>`
+   - Description: Prints a list of all commands or information about the provided command
 
  * config-path:
-        Usage: `--config-path <file>`
-        Description: Changes the path that will be used to load the configuration file (default value is './bk.conf')
+   - Usage: `--config-path <file>`
+   - Description: Changes the path that will be used to load the configuration file (default value is './bk.conf')
 
  * output-mode:
-        Usage: `-om <mirror|dir>`
-        Description: Sets the preffered output mode. `mirror` puts generated files next to the files they were generated from. `dir` puts all generated files in the specified `output-directory`. (`derives.h` is always placed inside `output-directory`)
+   - Usage: `-om <mirror|dir>`
+   - Description: Sets the preffered output mode. `mirror` puts generated files next to the files they were generated from. `dir` puts all generated files in the specified `output-directory`. (`derives.h` is always placed inside `output-directory`)
 
  * gen-ext:
-        Usage: `--gen-ext <file> <output path>`
-        Description: Generates the extension header from `bk-source` (bk.c) that contains the definitions that should be included inside static schema extensions.
+   - Usage: `--gen-ext <file> <output path>`
+   - Description: Generates the extension header from `bk-source` (bk.c) that contains the definitions that should be included inside static schema extensions.
 
  * generics:
-        Usage: `--generics`
-        Description: Generates generic macros for dump/parse functions. These macros rely on schemas respecting the `dump/parse_$schema$_$type$` standard. The generic macros will be placed inside `output-directory/generics.h`
+   - Usage: `--generics`
+   - Description: Generates generic macros for dump/parse functions. These macros rely on schemas respecting the `dump/parse_$schema$_$type$` standard. The generic macros will be placed inside `output-directory/generics.h`
 
  * watch:
-        Usage: `-w`
-        Description: Enables watch mode that constantly analyzes recently modified files with a `watch-delay` second delay. (Exit with `CTRL-C`)
+   - Usage: `-w`
+   - Description: Enables watch mode that constantly analyzes recently modified files with a `watch-delay` second delay. (Exit with `CTRL-C`)
 
  * watch-delay:
-        Usage: `--watch-delay <integer>`
-        Description: Sets `watch-delay` option, for more information see `watch`.
+   - Usage: `--watch-delay <integer>`
+   - Description: Sets `watch-delay` option, for more information see `watch`.
 
  * include-file:
-        Usage: `-i <file>`
-        Description: The included file will be analyzed regardless of its extension
+   - Usage: `-i <file>`
+   - Description: The included file will be analyzed regardless of its extension
 
  * include-directory:
-        Usage: `-I <directory>`
-        Description: The provided directory will be searched for '.c' or '.h' files to analyze
+   - Usage: `-I <directory>`
+   - Description: The provided directory will be searched for '.c' or '.h' files to analyze
 
  * output-directory:
-        Usage: `-o <directory>`
-        Description: All generated files will be placed inside the provided directory
+   - Usage: `-o <directory>`
+   - Description: All generated files will be placed inside the provided directory
 
  * schemas:
-        Usage: `--schemas`
-        Description: Displays a list of loaded schemas
+   - Usage: `--schemas`
+   - Description: Displays a list of loaded schemas
 
  * silent:
-        Usage: `--silent`
-        Description: Disables all terminal output
+   - Usage: `--silent`
+   - Description: Disables all terminal output
 
  * verbose:
-        Usage: `-v`
-        Description: Enables verbose terminal output
+   - Usage: `-v`
+   - Description: Enables verbose terminal output
 
  * enable-warning:
-        Usage: `-W <no-include|no-output|unknown-attr>`
-        Description: Enables the specified warning
+   - Usage: `-W <no-include|no-output|unknown-attr>`
+   - Description: Enables the specified warning
 
  * disable-warning:
-        Usage: `-dW <no-include|no-output|unknown-attr>`
-        Description: Disables the specified warning
+   - Usage: `-dW <no-include|no-output|unknown-attr>`
+   - Description: Disables the specified warning
 
  * derive-all:
-        Usage: `--derive-all`
-        Description: Derives all possible schemas for all analyzed structs
+   - Usage: `--derive-all`
+   - Description: Derives all possible schemas for all analyzed structs
 
  * disable-dump:
-        Usage: `--disable-dump`
-        Description: Disables the generation of `dump` functions
+   - Usage: `--disable-dump`
+   - Description: Disables the generation of `dump` functions
 
  * disable-parse:
-        Usage: `--disable-parse`
-        Description: Disables the generation of `parse` functions
+   - Usage: `--disable-parse`
+   - Description: Disables the generation of `parse` functions
 
  * disabled:
-        Usage: `--disabled`
-        Description: Disables all functionality by default. They can be enabled gradually in code with `ENABLE` macros.
+   - Usage: `--disabled`
+   - Description: Disables all functionality by default. They can be enabled gradually in code with `ENABLE` macros.
 
  * gen-implementation
-        Usage: `--gen-implementation <name>`:
-        Description: Sets the macro that will be used in the generated code to control enabling implementation (`BK_IMPLEMENTATION`)
+   - Usage: `--gen-implementation <name>`:
+   - Description: Sets the macro that will be used in the generated code to control enabling implementation (`BK_IMPLEMENTATION`)
 
  * gen-fmt-dst:
-        Usage: `--gen-fmt-dst <name>`
-        Description: Sets the macro that will be used in the generated code to control the type of `dst` in `dump` functions (`BK_FMT_DST_t`)
+   - Usage: `--gen-fmt-dst <name>`
+   - Description: Sets the macro that will be used in the generated code to control the type of `dst` in `dump` functions (`BK_FMT_DST_t`)
 
  * gen-fmt:
-        Usage: `--gen-fmt <name>`
-        Description: Sets the macro that will be used in the generated `dump` functions to output with `printf` style arguments (`BK_FMT`)
+   - Usage: `--gen-fmt <name>`
+   - Description: Sets the macro that will be used in the generated `dump` functions to output with `printf` style arguments (`BK_FMT`)
 
  * offset-type:
-        Usage: `--offset-type <name>`
-        Description: Sets the macro that will be used in the generated code to control the type of the `offset` variable inside `dump` functions (`BK_OFFSET_t`)
+   - Usage: `--offset-type <name>`
+   - Description: Sets the macro that will be used in the generated code to control the type of the `offset` variable inside `dump` functions (`BK_OFFSET_t`)
 
  * disable-prefix:
-        Usage: `--disable-prefix <name>`
-        Description: Sets the prefix of the generated macros that disable specific stuff, like `$prefix$$type$_$schema$` (`BK_DISABLE_`)
+   - Usage: `--disable-prefix <name>`
+   - Description: Sets the prefix of the generated macros that disable specific stuff, like `$prefix$$type$_$schema$` (`BK_DISABLE_`)
 
  * enable-prefix:
-        Usage: `--enable-prefix <name>`
-        Description: Sets the prefix of the generated macros that enable specific stuff, like `$prefix$$type$_$schema$` (`BK_ENABLE_`)
+   - Usage: `--enable-prefix <name>`
+   - Description: Sets the prefix of the generated macros that enable specific stuff, like `$prefix$$type$_$schema$` (`BK_ENABLE_`)

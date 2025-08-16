@@ -71,7 +71,7 @@ typedef struct {
 ```
 (See [people.h](./examples/people.h))
 
-For further explanation regarding the provided example, check out the [`Usage section of User Documentation`](./docs/usage.md).
+For further explanation regarding the provided example, check out the [Usage section of User Documentation](./docs/usage.md).
 
 # Documentation
 ## User Documentation
