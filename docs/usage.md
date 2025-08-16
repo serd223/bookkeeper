@@ -222,7 +222,7 @@ In this case, the generic macro call will expand to `dump_json_MyStruct((&m), (s
    - Description: Disables all functionality by default. They can be enabled gradually in code with `ENABLE` macros.
 
  * gen-implementation
-   - Usage: `--gen-implementation <name>`:
+   - Usage: `--gen-implementation <name>`
    - Description: Sets the macro that will be used in the generated code to control enabling implementation (`BK_IMPLEMENTATION`)
 
  * gen-fmt-dst:
