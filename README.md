@@ -55,7 +55,7 @@ And this is how you can build it:
 ```
 
 # But why?
-As C programmers we find ourselves constantly writing boilerplate code for parsing some config struct, or just simply printing any struct. C lacks the necessary metaprogramming tools to automate the generation of this kind of boilerplate code (unlike more modern languages where you can do `#derive(Debug)` or `deriving Show`). So we either use code generation tools like `bookkeeper` to generate this code, or write it by hand every. single. time. `bookkeeper` aims to be an easy to use, extendible, user friendly, embedded friendly and portable solution to this problem.
+As C programmers we find ourselves constantly writing boilerplate code for parsing some config struct, or just simply printing any struct. C lacks the necessary metaprogramming tools to automate the generation of this kind of boilerplate code (unlike more modern languages where you can do `#derive(Debug)` or `deriving Show`). So we either write it by hand every single time (too much work), ask LLMs to write the code for us (unreliable and requires code review), or use code generation tools like `bookkeeper`. `bookkeeper` aims to be an easy to use, extendible, user friendly, embedded friendly and portable solution to this problem.
 
 >[!WARNING]
 > Although bookkeeper aims to be all of those things, it is still somewhat early in development and the tool itself only supports Linux. The generated code is mostly embedded friendly and portable, though.
