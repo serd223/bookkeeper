@@ -15,6 +15,7 @@ A simple static extension looks like this: (See the [extension example](../examp
 #include <stdlib.h>
 #include <string.h>
 
+size_t gen_example_prelude(String* book_buf) { /* impl */ }
 size_t gen_example_dump_decl(String* book_buf, CCompound* ty, const char* dst_type) { /* impl */ }
 size_t gen_example_parse_decl(String* book_buf, CCompound* ty) { /* impl */ }
 void gen_example_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) { /* impl */ }
@@ -22,15 +23,16 @@ void gen_example_parse_impl(String* book_buf, CCompound* ty) { /* impl */ }
 
 // The `name` field should be unique among other schemas for
 // macros that mention schemas to work properly
+static Schema example = {
+    .gen_prelude = gen_example_prelude
+    .gen_dump_decl = gen_example_dump_decl,
+    .gen_parse_decl = gen_example_parse_decl,
+    .gen_dump_impl = gen_example_dump_impl,
+    .gen_parse_impl = gen_example_parse_impl,
+    .derive_attr = "derive_example",
+    .name = "example"
+};
 #define BK_ADD_SCHEMAS(s)\
-Schema example = {\
-    .gen_dump_decl = gen_example_dump_decl,\
-    .gen_parse_decl = gen_example_parse_decl,\
-    .gen_dump_impl = gen_example_dump_impl,\
-    .gen_parse_impl = gen_example_parse_impl,\
-    .derive_attr = "derive_example",\
-    .name = "example"\
-};\
 push_da(&s, example);
 // This file should be able to find `stb_c_lexer.h` since it is included by `bk.c`
 #include "bk.c"

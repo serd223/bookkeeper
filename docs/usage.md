@@ -50,8 +50,8 @@ void dump_$schema$_$type$($type$* item, BK_FMT_DST_t dst) {
     /* generated impl */
 }
 
-// returns zero if an error happens, otherwise returns 1
-int parse_$schema$_$type$(char* src, unsigned long len, $type$* dst) {
+// returns nonzero on error (enumerations may be used for error codes), otherwise returns 0 (all enumerations' 0 value must be OK).
+int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst) {
     /* generated impl */
 }
 ```
@@ -83,7 +83,7 @@ void dump_json_MyStruct(MyStruct* item, BK_FMT_DST_t dst) {
     /* generated impl */
 }
 
-// returns zero if an error happens, otherwise returns 1
+// returns nonzero on error (enumerations may be used for error codes), otherwise returns 0 (all enumerations' 0 value must be OK).
 int parse_json_MyStruct(char* src, unsigned long len, MyStruct* dst) {
     /* generated impl */
 }

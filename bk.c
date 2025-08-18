@@ -333,7 +333,21 @@ typedef struct {
 /** @brief Defines a schema object. */
 typedef struct {
     /**
-     * @brief Pointer to function that will be used to generate the declarations of "dump"
+     * @brief (Optional) Pointer to function that will be called to generate 'prelude' code that will be generated once at the
+     *                   top of each generated file.
+     *
+     * Schema authors may use this section for generating common type definitions (such as return enumerations) or for
+     * utility functions to be used in generated code.
+     *
+     * The code inside generated inside function is automatically protected by extra header guards
+     * to avoid redefinition/redeclaration errors.
+     *
+     * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
+    */
+    void (*gen_prelude)(String* book_buf);
+
+    /**
+     * @brief (Optional) Pointer to function that will be used to generate the declarations of "dump"
      *        functions for the specified type.
      *
      * The convention for the signatures of generated functions here is `void dump_$schema.name$_$type$($type$* item, $dst_type$ dst)`
@@ -345,11 +359,16 @@ typedef struct {
      * @return Should return the total amount of declarations.
     */
     size_t (*gen_dump_decl)(String* book_buf, CCompound* ty, const char* dst_type);
+
     /**
-     * @brief Pointer to function that will be used to generate the declarations of "parse"
+     * @brief (Optional) Pointer to function that will be used to generate the declarations of "parse"
      *        functions for the specified type.
      *
-     * The convention for the signatures of generated functions here is `int parse_$schema.name$_$type$(const char* src, unsigned long len, $type$* dst)`
+     * The convention for the signatures of generated functions here is `int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst)`
+     *
+     * Schemas may also define enumerations inside their `Schema::gen_parse` functions to return those as error codes. Even if schema
+     * authors make use of such error codes, return value '0' should always mean OK.
+     *
      *
      * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
      *        macro available to both this source file and extension authors can be used to output into this buffer.
@@ -357,11 +376,12 @@ typedef struct {
      * @return Should return the total amount of declarations.
     */
     size_t (*gen_parse_decl)(String* book_buf, CCompound* ty);
+
     /**
-     * @brief Pointer to function that will be used to generate the implementations of "dump"
+     * @brief (Optional) Pointer to function that will be used to generate the implementations of "dump"
      *        functions for the specified type.
      *
-     * The convention for the signatures of generated functions here is `int parse_$schema.name$_$type$(const char* src, unsigned long len, $type$* dst)`
+     * The convention for the signatures of generated functions here is `void dump_$schema.name$_$type$($type$* item, $dst_type$ dst)`
      *
      * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
      *        macro available to both this source file and extension authors can be used to output into this buffer.
@@ -370,22 +390,28 @@ typedef struct {
      * @param fmt_macro The name of the macro that is meant to be used **inside generated code** to output into the 'dst' buffer.
     */
     void (*gen_dump_impl)(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+
     /**
-     * @brief Pointer to function that will be used to generate the implementations of "parse"
+     * @brief (Optional) Pointer to function that will be used to generate the implementations of "parse"
      *        functions for the specified type.
      *
-     * The convention for the signatures of generated functions here is `void dump_$schema.name$_$type$($type$* item, $dst_type$ dst)`
+     * The convention for the signatures of generated functions here is `int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst)`
+     *
+     * Schemas may also define enumerations inside their `Schema::gen_parse` functions to return those as error codes. Even if schema
+     * authors make use of such error codes, return value '0' should always mean OK.
      *
      * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
      *        macro available to both this source file and extension authors can be used to output into this buffer.
      * @param ty The type that this function is meant to generate code for, contains all necessary info for code generation.
     */
     void (*gen_parse_impl)(String* book_buf, CCompound* ty);
+
     /**
      * @brief Defines the name of the 'attribute macro' that will be generated inside 'derives.h'
      *        for users to derive functionality for this schema.
     */
     const char* derive_attr;
+
     /**
      * @brief Defines the unique name for this schema.
     */
@@ -804,10 +830,11 @@ if (bk.conf.disabled_by_default) {\
  * @addtogroup codegen
  * @{
 */
-size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type);
-size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty);
-void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
-void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty);
+void gen_prelude(String* book_buf);
+size_t gen_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
+size_t gen_parse_decl(String* book_buf, CCompound* ty);
+void gen_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+void gen_parse_impl(String* book_buf, CCompound* ty);
 /** @} */
 
 /**
@@ -816,6 +843,8 @@ void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty);
  * @addtogroup jsoncodegen
  * @{
 */
+
+void gen_json_prelude(String* book_buf);
 size_t gen_json_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
 size_t gen_json_parse_decl(String* book_buf, CCompound* ty);
 void gen_json_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
@@ -1163,6 +1192,7 @@ int main(int argc, char** argv) {
     int ret_val = 0;
 
     Schema json = {
+        .gen_prelude = gen_json_prelude,
         .gen_dump_decl = gen_json_dump_decl, 
         .gen_parse_decl = gen_json_parse_decl, 
         .gen_dump_impl = gen_json_dump_impl, 
@@ -1171,6 +1201,7 @@ int main(int argc, char** argv) {
         .name = "json"
     };
     Schema debug = {
+        .gen_prelude = NULL,
         .gen_dump_decl = gen_debug_dump_decl, 
         .gen_parse_decl = NULL, 
         .gen_dump_impl = gen_debug_dump_impl, 
@@ -1182,7 +1213,8 @@ int main(int argc, char** argv) {
     push_da(&bk.schemas, debug);
 
     #ifdef BK_ENABLE_BK_CONF_GEN
-    Schema bkconf = {  
+    Schema bkconf = {
+        .gen_prelude = NULL,
         .gen_dump_decl = NULL, 
         .gen_parse_decl = gen_bkconf_parse_decl, 
         .gen_dump_impl = NULL, 
@@ -1421,23 +1453,24 @@ int main(int argc, char** argv) {
                     print_string(&book_buf, "#ifndef %s\n", bk.conf.offset_type_macro);
                     print_string(&book_buf, "#define %s size_t\n", bk.conf.offset_type_macro);
                     print_string(&book_buf, "#endif // %s\n", bk.conf.offset_type_macro);
+                    gen_prelude(&book_buf);
                     size_t num_decls = 0;
                     for (size_t i = 0; i < types.len; ++i) {
                         if (!bk.conf.disable_dump) {
-                            num_decls += gen_dump_decl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro);
+                            num_decls += gen_dump_decl(&book_buf, types.items + i, bk.conf.gen_fmt_dst_macro);
                         }
                         if (!bk.conf.disable_parse) {
-                            num_decls += gen_parse_decl(bk.schemas, &book_buf, types.items + i);
+                            num_decls += gen_parse_decl(&book_buf, types.items + i);
                         }
                     }
                     if (num_decls > 0) {
                         print_string(&book_buf, "\n#ifdef %s\n", bk.conf.gen_implementation_macro);
                         for (size_t i = 0; i < types.len; ++i) {
                             if (!bk.conf.disable_dump) {
-                                gen_dump_impl(bk.schemas, &book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro);
+                                gen_dump_impl(&book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro);
                             }
                             if (!bk.conf.disable_parse) {
-                                gen_parse_impl(bk.schemas, &book_buf, types.items + i);
+                                gen_parse_impl(&book_buf, types.items + i);
                             }
                             print_string(&book_buf, "\n#define ___BK_INCLUDE_TYPE_%s\n", types.items[i].name);
                         }
@@ -1923,13 +1956,23 @@ __BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, boo
     }
 }
 
-size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type) {
+void gen_prelude(String* book_buf) {
+    for (size_t i = 0; i < bk.schemas.len; ++i) {
+        Schema* s = bk.schemas.items + i;
+        print_string(book_buf, "#ifndef ___BK_PRELUDE_%s___\n", s->name);
+        print_string(book_buf, "#define ___BK_PRELUDE_%s___\n", s->name);
+        if (s->gen_prelude != NULL) s->gen_prelude(book_buf);
+        print_string(book_buf, "#endif // ___BK_PRELUDE_%s___\n", s->name);
+    }
+}
+
+size_t gen_dump_decl(String* book_buf, CCompound* ty, const char* dst_type) {
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
     gen_def_guard(BK_DUMP_UPPER);
     print_string(book_buf, "\n");
-    for (size_t i = 0; i < schemas.len; ++i) {
-        Schema* schema = schemas.items + i;
+    for (size_t i = 0; i < bk.schemas.len; ++i) {
+        Schema* schema = bk.schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_dump_decl != NULL) {
                 gen_def_type_guard(BK_DUMP_UPPER);
@@ -1942,13 +1985,13 @@ size_t gen_dump_decl(Schemas schemas, String* book_buf, CCompound* ty, const cha
     return count;
 }
 
-size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty) {
+size_t gen_parse_decl(String* book_buf, CCompound* ty) {
     size_t count = 0;
     if (ty->derived_schemas == 0) return count;
     gen_def_guard(BK_PARSE_UPPER);
     print_string(book_buf, "\n");
-    for (size_t i = 0; i < schemas.len; ++i) {
-        Schema* schema = schemas.items + i;
+    for (size_t i = 0; i < bk.schemas.len; ++i) {
+        Schema* schema = bk.schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_parse_decl != NULL) {
                 gen_def_type_guard(BK_PARSE_UPPER);
@@ -1961,12 +2004,12 @@ size_t gen_parse_decl(Schemas schemas, String* book_buf, CCompound* ty) {
     return count;
 }
 
-void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
+void gen_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
     if (ty->derived_schemas == 0) return;
     gen_def_guard(BK_DUMP_UPPER);
     print_string(book_buf, "\n");
-    for (size_t i = 0; i < schemas.len; ++i) {
-        Schema* schema = schemas.items + i;
+    for (size_t i = 0; i < bk.schemas.len; ++i) {
+        Schema* schema = bk.schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_dump_impl != NULL) {
                 gen_def_type_guard(BK_DUMP_UPPER);
@@ -1978,12 +2021,12 @@ void gen_dump_impl(Schemas schemas, String* book_buf, CCompound* ty, const char*
     gen_endif_guard(BK_DUMP_UPPER);
 }
 
-void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty) {
+void gen_parse_impl(String* book_buf, CCompound* ty) {
     if (ty->derived_schemas == 0) return;
     gen_def_guard(BK_PARSE_UPPER);
     print_string(book_buf, "\n");
-    for (size_t i = 0; i < schemas.len; ++i) {
-        Schema* schema = schemas.items + i;
+    for (size_t i = 0; i < bk.schemas.len; ++i) {
+        Schema* schema = bk.schemas.items + i;
         if (ty->derived_schemas & (1 << i)) {
             if (schema->gen_parse_impl != NULL) {
                 gen_def_type_guard(BK_PARSE_UPPER);
@@ -1996,14 +2039,22 @@ void gen_parse_impl(Schemas schemas, String* book_buf, CCompound* ty) {
 }
 
 // JSON generation
+void gen_json_prelude(String* book_buf) {
+    print_string(book_buf, "typedef enum {\n");
+    print_string(book_buf, "    BKJSON_OK = 0,\n");
+    print_string(book_buf, "    BKJSON_cJSON_ERROR,\n");
+    print_string(book_buf, "    BKJSON_FIELD_NOT_FOUND,\n");
+    print_string(book_buf, "    BKJSON_MISMATCHED_FIELD_TYPE,\n");
+    print_string(book_buf, "} BkJSON_Result;\n");
+}
 size_t gen_json_dump_decl(String* book_buf, CCompound* ty, const char* dst_type) {
     print_string(book_buf, "void dump_json_%s(%s* item, %s dst);\n", ty->name, ty->name, dst_type);
     return 1;
 }
 size_t gen_json_parse_decl(String* book_buf, CCompound* ty) {
-    print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst);\n\n", ty->name, ty->name);
+    print_string(book_buf, "BkJSON_Result parse_cjson_%s(cJSON* src, %s* dst);\n\n", ty->name, ty->name);
     print_string(book_buf, "/// WARN: Immediately returns on error, so `dst` might be partially filled.\n");
-    print_string(book_buf, "int parse_json_%s(const char* src, unsigned long len, %s* dst);\n", ty->name, ty->name);
+    print_string(book_buf, "BkJSON_Result parse_json_%s(const char* src, unsigned long len, %s* dst);\n", ty->name, ty->name);
     return 2;
 }
 void gen_json_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
@@ -2057,36 +2108,36 @@ void gen_json_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, c
     print_string(book_buf, "}\n");
 }
 void gen_json_parse_impl(String* book_buf, CCompound* ty) {
-    print_string(book_buf, "int parse_cjson_%s(cJSON* src, %s* dst) {\n", ty->name, ty->name);
+    print_string(book_buf, "BkJSON_Result parse_cjson_%s(cJSON* src, %s* dst) {\n", ty->name, ty->name);
     for (size_t i = 0; i < ty->fields.len; ++i) {
         Field* f = ty->fields.items + i;
         char* tag = f->tag ? f->tag : f->name;
         print_string(book_buf, "    cJSON* %s_%s = cJSON_GetObjectItemCaseSensitive(src, \"%s\");\n", ty->name, f->name, tag);
-        print_string(book_buf, "    if (!%s_%s) return 0;\n", ty->name, f->name);
+        print_string(book_buf, "    if (!%s_%s) return BKJSON_FIELD_NOT_FOUND;\n", ty->name, f->name);
         if (f->type.kind == CEXTERNAL) {
-            print_string(book_buf, "    if (!parse_cjson_%s(%s_%s, &dst->%s)) return 0;\n", f->type.name, ty->name, f->name, f->name);
+            print_string(book_buf, "    if (!parse_cjson_%s(%s_%s, &dst->%s)) return BKJSON_cJSON_ERROR;\n", f->type.name, ty->name, f->name, f->name);
         } else if (f->type.kind == CPRIMITIVE) {
             switch (f->type.type) {
             case CINT: case CUINT: {
                 print_string(book_buf, "    if (cJSON_IsNumber(%s_%s)) {\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = %s_%s->valueint;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                print_string(book_buf, "        return 0;\n");
+                print_string(book_buf, "        return BKJSON_MISMATCHED_FIELD_TYPE;\n");
                 print_string(book_buf, "    }\n");
             } break;
             case CLONG: case CULONG: case CFLOAT: {
                 print_string(book_buf, "    if (cJSON_IsNumber(%s_%s)) {\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = %s_%s->valuedouble;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                print_string(book_buf, "        return 0;\n");
+                print_string(book_buf, "        return BKJSON_MISMATCHED_FIELD_TYPE;\n");
                 print_string(book_buf, "    }\n");
             } break;
             case CCHAR: {
                 print_string(book_buf, "    if (cJSON_IsString(%s_%s)) {\n", ty->name, f->name);
-                print_string(book_buf, "        if (!%s_%s->valuestring) { return 0; };\n", ty->name, f->name);
+                print_string(book_buf, "        if (!%s_%s->valuestring) { return 1; };\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = *%s_%s->valuestring;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                print_string(book_buf, "        return 0;\n");
+                print_string(book_buf, "        return BKJSON_MISMATCHED_FIELD_TYPE;\n");
                 print_string(book_buf, "    }\n");
                     
             } break;
@@ -2094,16 +2145,16 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
                 print_string(book_buf, "    if (cJSON_IsBool(%s_%s)) {\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = %s_%s->valueint;\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                print_string(book_buf, "        return 0;\n");
+                print_string(book_buf, "        return BKJSON_MISMATCHED_FIELD_TYPE;\n");
                 print_string(book_buf, "    }\n");
                     
             } break;
             case CSTRING: {
                 print_string(book_buf, "    if (cJSON_IsString(%s_%s)) {\n", ty->name, f->name);
-                print_string(book_buf, "        if (!%s_%s->valuestring) { return 0; };\n", ty->name, f->name);
+                print_string(book_buf, "        if (!%s_%s->valuestring) { return 1; };\n", ty->name, f->name);
                 print_string(book_buf, "        dst->%s = strdup(%s_%s->valuestring);\n", f->name, ty->name, f->name);
                 print_string(book_buf, "    } else {\n");
-                print_string(book_buf, "        return 0;\n");
+                print_string(book_buf, "        return BKJSON_MISMATCHED_FIELD_TYPE;\n");
                 print_string(book_buf, "    }\n");
             } break;
             }
@@ -2111,13 +2162,13 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty) {
             abort();
         }
     }
-    print_string(book_buf, "    return 1;\n");
+    print_string(book_buf, "    return BKJSON_OK;\n");
     print_string(book_buf, "}\n");
     print_string(book_buf, "/// WARN: Immediately returns on error, so `dst` might be partially filled.\n");
-    print_string(book_buf, "int parse_json_%s(const char* src, unsigned long len, %s* dst) {\n", ty->name, ty->name);
+    print_string(book_buf, "BkJSON_Result parse_json_%s(const char* src, unsigned long len, %s* dst) {\n", ty->name, ty->name);
     print_string(book_buf, "    cJSON* json = cJSON_ParseWithLength(src, len);\n");
-    print_string(book_buf, "    if (!json) return 0;\n");
-    print_string(book_buf, "    int res = parse_cjson_%s(json, dst);\n", ty->name);
+    print_string(book_buf, "    if (!json) return BKJSON_cJSON_ERROR;\n");
+    print_string(book_buf, "    BkJSON_Result res = parse_cjson_%s(json, dst);\n", ty->name);
     print_string(book_buf, "    cJSON_Delete(json);\n");
     print_string(book_buf, "    return res;\n");
     print_string(book_buf, "}\n");

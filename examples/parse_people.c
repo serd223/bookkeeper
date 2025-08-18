@@ -24,7 +24,7 @@ int main(void) {
 
     Manager manager = {0};
     printf("[INFO] Parsing '"JSON_FILE"'...\n");
-    if (!parse_json_Manager(input, input_len, &manager)) return 1;
+    if (parse_json_Manager(input, input_len, &manager)) return 1;
 
     printf("[INFO] Data parsed from '"JSON_FILE"':\n");
     dump_debug_Manager(&manager, stdout);
