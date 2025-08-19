@@ -515,26 +515,26 @@ static char tmp_str[4096];
 */
 #define bk_log_loc(level, source, line, ...) do {\
     if (!bk.conf.silent) {\
-        switch (level) {\
+        switch ((level)) {\
         case LOG_INFO: {\
             if (bk.conf.verbose) {\
-                fprintf(stderr, "%s:%d: [INFO] ", source, line);\
+                fprintf(stderr, "%s:%d: [INFO] ", (source), (line));\
                 fprintf(stderr, __VA_ARGS__);\
             }\
         } break;\
         case LOG_WARN: {\
             if (bk.conf.verbose) {\
-                fprintf(stderr, "%s:%d: [WARN] ", source, line);\
+                fprintf(stderr, "%s:%d: [WARN] ", (source), (line));\
             } else {\
-                fprintf(stderr, "[WARN] ");\
+                fprintf(stderr, "WARNING: ");\
             }\
             fprintf(stderr, __VA_ARGS__);\
         } break;\
         case LOG_ERROR: {\
             if (bk.conf.verbose) {\
-                fprintf(stderr, "%s:%d: [ERROR] ", source, line);\
+                fprintf(stderr, "%s:%d: [ERROR] ", (source), (line));\
             } else {\
-                fprintf(stderr, "[ERROR] ");\
+                fprintf(stderr, "ERROR: ");\
             }\
             fprintf(stderr, __VA_ARGS__);\
         } break;\
@@ -550,6 +550,51 @@ static char tmp_str[4096];
  * @param ... `printf` style format arguments
 */
 #define bk_log(level, ...) bk_log_loc(level, __FILE__, __LINE__, __VA_ARGS__)
+
+/**
+ * @brief Diagnostics system of `bookkeeper`.
+ *
+ * This macro is purely for use in @link analyze_file `analyze_file`@endlink since it implicitly uses
+ * the `file_name` and `lex` parameters of function.
+ *
+ * See @link bk_diag_loc `bk_diag_loc`@endlink for a generic version that accepts those as parameters.
+ *
+ * @param level Level of logging meant to be used for this call. Should be a member of `LogLevel`.
+ * @param ... `printf` style format arguments
+*/
+#define bk_diag(level, ...) do {\
+stb_lex_location loc = {0};\
+stb_c_lexer_get_location(&lex, lex.where_firstchar, &loc);\
+bk_diag_loc(level, file_name, loc.line_number, loc.line_offset, __VA_ARGS__);\
+} while(0)
+
+/**
+ * @brief Inner `loc` implementation of @link bk_diag `bk_diag`@endlink.
+ *
+ * @param level Level of logging meant to be used for this call. Should be a member of `LogLevel`.
+ * @param file_name Short name of the file that the diagnostic originated from.
+ * @param lex Instance `stb_lexer` being used to tokenize/parse this file.
+ * @param ... `printf` style format arguments
+*/
+#define bk_diag_loc(level, source, line, offset, ...) do {\
+    switch ((level)) {\
+    case LOG_INFO: {\
+        if (bk.conf.verbose) {\
+            fprintf(stderr, "%s:%d:%d: ", (source), (line), (offset));\
+            fprintf(stderr, __VA_ARGS__);\
+        }\
+    } break;\
+    case LOG_WARN: {\
+        fprintf(stderr, "%s:%d:%d: WARNING: ", (source), (line), (offset));\
+        fprintf(stderr, __VA_ARGS__);\
+    } break;\
+    case LOG_ERROR: {\
+        fprintf(stderr, "%s:%d:%d: ERROR: ", (source), (line), (offset));\
+        fprintf(stderr, __VA_ARGS__);\
+    } break;\
+    default: abort();\
+    }\
+} while(0)
 
 /** @brief Enumeration for different logging levels that are used in @link bk_log_loc `bk_log_loc`@endlink and @link bk_log `bk_log`@endlink. */
 typedef enum {
@@ -741,12 +786,13 @@ bool get_expect_c(stb_lexer* lex,...); // Unused for now
  *
  * This function doesn't return on errors and instead just logs them and continues to try parsing.
  *
+ * @param file_name The name of the currently analyzed file. Used for error messages.
  * @param schemas Dynamic array that contains all loaded schemas.
  * @param content Contents of the source file.
  * @param out Dynamic array for appending analyzed types.
  * @param derive_all Whether the `BkConfig::derive_all` option is on or not.
 */
-__BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all);
+__BK_API void analyze_file(const char* file_name, Schemas schemas, String content, CCompounds* out, bool derive_all);
 /** @} */
 
 /**
@@ -1333,10 +1379,10 @@ int main(int argc, char** argv) {
     }
 
     if (bk.conf.include_dir == NULL && bk.entries.len == 0) {
-        if (bk.conf.warn_no_include) bk_log(LOG_WARN, "No files were included\n");
+        if (bk.conf.warn_no_include) bk_log(LOG_WARN, "No files were included. [-W "WARN_NO_INCLUDE"]\n");
     }
     if (bk.conf.output_dir == NULL) {
-        if (bk.conf.warn_no_output) bk_log(LOG_WARN, "No output path set\n");
+        if (bk.conf.warn_no_output) bk_log(LOG_WARN, "No output path set. [-W "WARN_NO_OUTPUT"]\n");
     }
     
     {
@@ -1436,7 +1482,7 @@ int main(int argc, char** argv) {
                     push_da(&all_types, types.items[i]);
                 };
                 types.len = 0;
-                analyze_file(bk.schemas, file_buf, &types, bk.conf.derive_all);
+                analyze_file(in_file->name, bk.schemas, file_buf, &types, bk.conf.derive_all);
                 bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
                 book_buf.len = 0;
                 current_iter = time(NULL);
@@ -1820,7 +1866,7 @@ bool get_expect_c(stb_lexer* lex, ...) {
     return res;
 }
 
-__BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, bool derive_all) {
+__BK_API void analyze_file(const char* file_name, Schemas schemas, String content, CCompounds* out, bool derive_all) {
     static char string_store[4096];
     stb_lexer lex = {0};
     stb_c_lexer_init(&lex, content.items, content.items + content.len, string_store, sizeof string_store);
@@ -1862,8 +1908,7 @@ __BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, boo
                         stb_c_lexer_get_token(&lex); // type name 1
                         stb_c_lexer_get_token(&lex); // type name 2
                     } else {
-                        // TODO: Report unknown primitive error
-                        bk_log(LOG_INFO, "Unknown type while parsing struct, skipping...\n");
+                        bk_diag(LOG_INFO, "Unknown type while parsing sruct, skipping...\n");
                         break;
                     }
                     
@@ -1894,14 +1939,12 @@ __BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, boo
                         field.type.kind = CPRIMITIVE;
                     }
                 } else {
-                    // TODO: Report unknown field error
-                    bk_log(LOG_INFO, "Unknown type while parsing struct, skipping...\n");
-                    break;
+                    bk_diag(LOG_INFO, "Couldn't parse field in struct, skipping...\n");
                 }
                 stb_c_lexer_get_token(&lex); // name
                 field.name = strdup(lex.string); // alloc
                 if (!get_expect_tokens(&lex, ';', -1)) {
-                    // TODO: get location info and report missing semicolon error
+                    bk_diag(LOG_ERROR, "Expected ';'.\n");
                     free_field(field);
                     break;
                 }
@@ -1942,7 +1985,7 @@ __BK_API void analyze_file(Schemas schemas, String content, CCompounds* out, boo
 
                 stb_c_lexer_get_token(&lex); // derive_schema
                 if (!matched) {
-                    if (bk.conf.warn_unknown_attr) bk_log(LOG_WARN, "Found unknown attribute '%s' while parsing type '%s'\n", lex.string, strct.name);
+                    if (bk.conf.warn_unknown_attr) bk_diag(LOG_WARN, "Found unknown attribute '%s' while parsing type '%s'. [-W "WARN_UNKNOWN_ATTR"]\n", lex.string, strct.name);
                 }
                 stb_c_lexer_get_token(&lex); // (
                 stb_c_lexer_get_token(&lex); // )
