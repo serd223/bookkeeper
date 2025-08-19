@@ -333,7 +333,7 @@ typedef struct {
 /** @brief Defines a schema object. */
 typedef struct {
     /**
-     * @brief (Optional) Pointer to function that will be called to generate 'prelude' code that will be generated once at the
+     * @brief (Nullable) Pointer to function that will be called to generate 'prelude' code that will be generated once at the
      *                   top of each generated file.
      *
      * Schema authors may use this section for generating common type definitions (such as return enumerations) or for
@@ -347,7 +347,7 @@ typedef struct {
     void (*gen_prelude)(String* book_buf);
 
     /**
-     * @brief (Optional) Pointer to function that will be used to generate the declarations of "dump"
+     * @brief (Nullable) Pointer to function that will be used to generate the declarations of "dump"
      *        functions for the specified type.
      *
      * The convention for the signatures of generated functions here is `void dump_$schema.name$_$type$($type$* item, $dst_type$ dst)`
@@ -361,7 +361,7 @@ typedef struct {
     size_t (*gen_dump_decl)(String* book_buf, CCompound* ty, const char* dst_type);
 
     /**
-     * @brief (Optional) Pointer to function that will be used to generate the declarations of "parse"
+     * @brief (Nullable) Pointer to function that will be used to generate the declarations of "parse"
      *        functions for the specified type.
      *
      * The convention for the signatures of generated functions here is `int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst)`
@@ -378,7 +378,7 @@ typedef struct {
     size_t (*gen_parse_decl)(String* book_buf, CCompound* ty);
 
     /**
-     * @brief (Optional) Pointer to function that will be used to generate the implementations of "dump"
+     * @brief (Nullable) Pointer to function that will be used to generate the implementations of "dump"
      *        functions for the specified type.
      *
      * The convention for the signatures of generated functions here is `void dump_$schema.name$_$type$($type$* item, $dst_type$ dst)`
@@ -392,12 +392,12 @@ typedef struct {
     void (*gen_dump_impl)(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
 
     /**
-     * @brief (Optional) Pointer to function that will be used to generate the implementations of "parse"
+     * @brief (Nullable) Pointer to function that will be used to generate the implementations of "parse"
      *        functions for the specified type.
      *
      * The convention for the signatures of generated functions here is `int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst)`
      *
-     * Schemas may also define enumerations inside their `Schema::gen_parse` functions to return those as error codes. Even if schema
+     * Schemas may also define enumerations inside their `Schema::gen_prelude` functions to return error codes. Even if schema
      * authors make use of such error codes, return value '0' should always mean OK.
      *
      * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
@@ -555,7 +555,7 @@ static char tmp_str[4096];
  * @brief Diagnostics system of `bookkeeper`.
  *
  * This macro is purely for use in @link analyze_file `analyze_file`@endlink since it implicitly uses
- * the `file_name` and `lex` parameters of function.
+ * the `file_name` and `lex` parameters of the function.
  *
  * See @link bk_diag_loc `bk_diag_loc`@endlink for a generic version that accepts those as parameters.
  *
@@ -572,8 +572,9 @@ bk_diag_loc(level, file_name, loc.line_number, loc.line_offset, __VA_ARGS__);\
  * @brief Inner `loc` implementation of @link bk_diag `bk_diag`@endlink.
  *
  * @param level Level of logging meant to be used for this call. Should be a member of `LogLevel`.
- * @param file_name Short name of the file that the diagnostic originated from.
- * @param lex Instance `stb_lexer` being used to tokenize/parse this file.
+ * @param source Short name of the source file that the diagnostic originated from.
+ * @param line The line number the diagnostic originated at.
+ * @param offset The line offset the diagnostic originated at.
  * @param ... `printf` style format arguments
 */
 #define bk_diag_loc(level, source, line, offset, ...) do {\
