@@ -366,7 +366,7 @@ typedef struct {
      *
      * The convention for the signatures of generated functions here is `int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst)`
      *
-     * Schemas may also define enumerations inside their `Schema::gen_parse` functions to return those as error codes. Even if schema
+     * Schemas may also define enumerations inside their `Schema::gen_prelude` functions to return error codes. Even if schema
      * authors make use of such error codes, return value '0' should always mean OK.
      *
      *
