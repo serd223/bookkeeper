@@ -209,6 +209,10 @@ In this case, the generic macro call will expand to `dump_json_MyStruct((&m), (s
    - Usage: `--derive-all`
    - Description: Derives all possible schemas for all analyzed structs
 
+ * derive:
+   - Usage: `--derive <schema>`
+   - Description: Derives the provided schema for all analyzed structs
+
  * disable-dump:
    - Usage: `--disable-dump`
    - Description: Disables the generation of `dump` functions

@@ -475,6 +475,9 @@ typedef struct {
 
     /** @brief Dynamic array of all schemas that were defined. */
     Schemas schemas;
+
+    /** @brief Bitfield that contains all schemas that were derived globally */
+    int derive_schemas;
 } BkState;
 
 /**
@@ -994,6 +997,7 @@ bool verbose_cmd(int* i, int argc, char** argv);
 bool enable_warn_cmd(int* i, int argc, char** argv);
 bool disable_warn_cmd(int* i, int argc, char** argv);
 bool derive_all_cmd(int* i, int argc, char** argv);
+bool derive_cmd(int* i, int argc, char** argv);
 bool disable_dump_cmd(int* i, int argc, char** argv);
 bool disable_parse_cmd(int* i, int argc, char** argv);
 bool disabled_cmd(int* i, int argc, char** argv);
@@ -1141,6 +1145,13 @@ static Command commands[] = {
         .usage = "--derive-all",
         .desc = "Derives all possible schemas for all analyzed structs",
         .exec_c = derive_all_cmd
+    },
+    {
+        .name = "derive",
+        .flag = "--derive",
+        .usage = "--derive <schema>",
+        .desc = "Derives the provided schema for all analyzed structs",
+        .exec_c = derive_cmd
     },
     {
         .name = "disable-dump",
@@ -2634,6 +2645,25 @@ bool derive_all_cmd(int* i, int argc, char** argv) {
     (void)argv;
     bk.conf.derive_all = true;
     return true;
+}
+
+bool derive_cmd(int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        char* name = argv[*i];
+        bool found = false;
+        for (size_t j = 0; j < bk.schemas.len; ++j) {
+            if (strcmp(name, bk.schemas.items[j].name) == 0) {
+                bk.derive_schemas |= (1 << j);
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            return true;
+        }
+        if (bk.conf.warn_unknown_attr) bk_log(LOG_WARN, "No schema named '%s' was defined.\n", name);
+    }
+    return false;    
 }
 
 bool gen_impl_cmd(int* i, int argc, char** argv) {
