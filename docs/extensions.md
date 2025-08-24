@@ -23,7 +23,7 @@ void gen_example_parse_impl(String* book_buf, CCompound* ty) { /* impl */ }
 
 // The `name` field should be unique among other schemas for
 // macros that mention schemas to work properly
-static Schema example = {
+static StaticSchema example = {
     .gen_prelude = gen_example_prelude
     .gen_dump_decl = gen_example_dump_decl,
     .gen_parse_decl = gen_example_parse_decl,

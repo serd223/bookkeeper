@@ -189,6 +189,10 @@ In this case, the generic macro call will expand to `dump_json_MyStruct((&m), (s
    - Usage: `--schemas`
    - Description: Displays a list of loaded schemas
 
+ * include-schema:
+   - Usage: `-is <schema-file`
+   - Description: Includes a dynamic schema file
+
  * silent:
    - Usage: `--silent`
    - Description: Disables all terminal output

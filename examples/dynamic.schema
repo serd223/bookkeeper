@@ -1,0 +1,34 @@
+name: "dynamic",
+derive: "derive_dynamic"
+
+$dumpguard$
+void dump_dynamic_$ty$($ty$* item, $dst$ dst);
+$enddumpguard$
+
+$implguard$
+$dumpguard$
+void dump_dynamic_$ty$($ty$* item, $dst$ dst) {
+    $offset$ offset = 0; (void)offset;
+    $for ty {$
+        $fmt$("$tag$: ");
+        $if CINT {$
+            $fmt$("%d", item->$it$);
+        $}$
+
+        $if CSTRING {$
+            $fmt$("%s", item->$it$);
+        $}$
+
+        $if CBOOL {$
+            $fmt$("%s", item->$it$ ? "true" : "false");
+        $}$
+
+        $if CEXTERNAL {$
+            dump_dynamic_$it.type$(&item->$it$, dst);
+        $}$
+        $fmt$("\n");
+
+    $}$
+}
+$enddumpguard$
+$endimplguard$

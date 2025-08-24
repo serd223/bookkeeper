@@ -1,0 +1,83 @@
+name: "bkconf",
+derive: "derive_bkconf"
+
+$parseguard$
+int parse_bkconf_$ty$(const char* src, unsigned long len, $ty$* dst);
+$endparseguard$
+
+$implguard$
+$parseguard$
+
+int parse_bkconf_$ty$(const char* src, unsigned long len, $ty$* dst) {
+	char str_buf[512] = {0};
+	const char* name_start = src;
+	const char* name_end = src;
+	const char* value_start = src;
+	const char* value_end = src;
+	double value_double = 0; (void)value_double;
+	long value_int = 0;
+	bool value_bool = false;
+	for (const char* cur = src; cur < (src + len); ++cur) {
+		if (*cur == '#') {
+			for (; cur < (src + len); ++cur) {
+				if (*cur == '\n') {
+					++cur;
+					name_start = cur;
+					break;
+				}
+			}
+		} else if (*cur == '\n') {
+			value_end = cur - 1;
+			value_int = atol(value_start);
+			value_double = atof(value_start);
+			if (strncmp(value_start, "true", 4) == 0) value_bool = true;
+			if (strncmp(value_start, "false", 5) == 0) value_bool = false;
+			str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
+			$for ty {$
+				$if index == 0 {$
+				if (strcmp(str_buf, "$it$") == 0) {
+				$}$
+				$if index != 0 {$
+				else if (strcmp(str_buf, "$it$") == 0) {
+				$}$
+
+				$if CINT {$
+					dst->$it$ = value_int;
+				$}$
+				$if CUINT {$
+					dst->$it$ = value_int;
+				$}$
+				$if CLONG {$
+					dst->$it$ = value_int;
+				$}$
+				$if CULONG {$
+					dst->$it$ = value_int;
+				$}$
+				$if CCHAR {$
+					dst->$it$ = value_start;
+				$}$
+				$if CFLOAT {$
+					dst->$it$ = value_double;
+				$}$
+				$if CBOOL {$
+					dst->$it$ = value_bool;
+				$}$
+				$if CSTRING {$
+					str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->$it$ = strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
+				$}$
+
+				}
+			$}$
+			name_start = cur + 1;
+		} else if (*cur == '=') {
+			name_end = cur - 1;
+			value_start = cur + 1;
+		}
+	}
+	return 0;
+}
+
+$endparseguard$
+$endimplguard$

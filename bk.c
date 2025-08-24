@@ -50,8 +50,6 @@ DEALINGS IN THE SOFTWARE.
 #define STB_C_LEXER_IMPLEMENTATION
 #include "stb_c_lexer.h"
 
-// #define BK_ENABLE_BK_CONF_GEN
-
 #ifndef __BK_GEN_EXT_DEFINITIONS
 #define __BK_GEN_EXT_DEFINITIONS
 
@@ -214,6 +212,13 @@ typedef struct {
     char* include_files;
 
     /**
+     * @brief Only used when reading dynamic schema files as a comma seperated list from configuration files.
+     *
+     * Set to NULL if no config file was loaded, or this field wasn't set inside the loaded config file.
+    */
+    char* schema_files;
+
+    /**
      * @brief Denotes the directory that will be used to output most(*) generated files.
      *
      * Only used for 'derives.h' and 'generics.h' when `BkConfig::output_mode` is "mirror".
@@ -237,6 +242,46 @@ typedef struct {
     size_t len;
     size_t cap;
 } String;
+
+/** @brief Dynamic array of `String`. */
+typedef struct {
+    String* items;
+    size_t len;
+    size_t cap;
+} Strings;
+
+/** @cond */
+
+// String_View stuff
+typedef struct {
+    const char* items;
+    size_t len;
+} String_View;
+
+// NOTE: Perhaps we could also generate macros like this for dumping?
+#define SV_FMT "%.*s"
+#define SV_ARG(sv) (int)(sv).len, (sv).items
+#define SV_ARG_N(sv, n) (int)((n <= (sv).len) ? n : (sv).len), (sv).items
+
+String_View sv(const char* cstr);
+String_View sv_from_parts(const char* items, size_t len);
+String_View sv_from_str(String* str);
+char* sv_to_cstr(String_View sv);
+bool sv_starts_with(String_View sv, String_View prefix);
+String_View sv_chop(String_View sv, size_t n);
+bool sv_chop_if_prefix(String_View* sv, String_View prefix);
+String_View sv_chop_line(String_View sv, size_t n);
+void sv_chop2(String_View* sv, size_t n);
+String_View sv_trim_start(String_View sv, char c);
+String_View sv_trim2_start(String_View sv, String_View cs);
+String_View sv_trim_whitespace_start(String_View sv);
+String_View sv_trim_whitespace_end(String_View sv);
+String_View sv_trim_whitespace(String_View sv);
+String_View sv_find(String_View sv, char c);
+String_View sv_substr(String_View sv, size_t start, size_t len);
+void sv_loc(String_View file, String_View cursor, int* line, int* offset);
+
+/** @endcond */
 
 /** @brief Kind tag for `CType` */
 typedef enum {
@@ -330,7 +375,7 @@ typedef struct {
     size_t cap;
 } CCompounds;
 
-/** @brief Defines a schema object. */
+/** @brief Defines a static schema. */
 typedef struct {
     /**
      * @brief (Nullable) Pointer to function that will be called to generate 'prelude' code that will be generated once at the
@@ -366,7 +411,7 @@ typedef struct {
      *
      * The convention for the signatures of generated functions here is `int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst)`
      *
-     * Schemas may also define enumerations inside their `Schema::gen_prelude` functions to return error codes. Even if schema
+     * Schemas may also define enumerations inside their `StaticSchema::gen_prelude` functions to return error codes. Even if schema
      * authors make use of such error codes, return value '0' should always mean OK.
      *
      *
@@ -397,7 +442,7 @@ typedef struct {
      *
      * The convention for the signatures of generated functions here is `int|$enum$ parse_$schema$_$type$(char* src, unsigned long len, $type$* dst)`
      *
-     * Schemas may also define enumerations inside their `Schema::gen_prelude` functions to return error codes. Even if schema
+     * Schemas may also define enumerations inside their `StaticSchema::gen_prelude` functions to return error codes. Even if schema
      * authors make use of such error codes, return value '0' should always mean OK.
      *
      * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
@@ -416,14 +461,52 @@ typedef struct {
      * @brief Defines the unique name for this schema.
     */
     const char* name;
-} Schema;
+} StaticSchema;
 
-/** @brief Dynamic array for `Schema`. */
+/** @brief Dynamic array for `StaticSchema`. */
 typedef struct {
-    Schema* items;
+    StaticSchema* items;
     size_t len;
     size_t cap;
-} Schemas;
+} StaticSchemas;
+
+/** @brief Defines a dynamic schema object. */
+typedef struct {    
+    /**
+     * @brief String view that contains a view into the source code of the dynamic schema in the .schema format.
+     *
+     * The memory that is pointed to by this view is managed by the global `BkState` instance.
+    */
+    String_View source;
+
+    /**
+     * @brief Defines the name of the 'attribute macro' that will be generated inside 'derives.h'
+     *        for users to derive functionality for this dynamic schema.
+     *
+     * The memory that is pointed to by this view is managed by the global `BkState` instance.
+    */
+    String_View derive_attr;
+
+    /**
+     * @brief Defines the unique name for this dynamic schema.
+     *
+     * The memory that is pointed to by this view is managed by the global `BkState` instance.
+    */
+    String_View name;
+} DynamicSchema;
+
+/** @brief Dynamic array for `DynamicSchema`. */
+typedef struct {
+    DynamicSchema* items;
+    size_t len;
+    size_t cap;
+} DynamicSchemas;
+
+/** @brief Enumeration that defines all supported schema types. */
+typedef enum {
+    SCHEMA_STATIC,
+    SCHEMA_DYNAMIC,
+} SchemaType;
 
 /**
  * @brief Defines a source file meant to be analyzed.
@@ -473,8 +556,14 @@ typedef struct {
     /** @brief Dynamic array of all input files that were discovered or supplied. */
     Entries entries;
 
-    /** @brief Dynamic array of all schemas that were defined. */
-    Schemas schemas;
+    /** @brief Dynamic array of all static schemas that were defined. */
+    StaticSchemas schemas;
+
+    /** @brief Dynamic array of all static schemas that were defined. */
+    DynamicSchemas dynamic_schemas;
+
+    /** @brief Dynamic string buffer that is used to store all dynamic schema sources. */
+    Strings dynamic_source;
 
     /** @brief Bitfield that contains all schemas that were derived globally */
     int derive_schemas;
@@ -663,6 +752,17 @@ __BK_API bool write_entire_file_loc(const char* file_name, String* src, const ch
 #define write_entire_file(file_name, src) write_entire_file_loc(file_name, src, __FILE__, __LINE__)
 __BK_API unsigned long djb2(const char* s);
 __BK_API bool entry_from_file(const char* file_name, Entry* out);
+__BK_API bool load_dynamic_schema_loc(const char* file_name, const char* source_file, int source_line);
+#define load_dynamic_schema(file_name) load_dynamic_schema_loc(file_name, __FILE__, __LINE__)
+
+/**
+ * @brief Function used for obtaining the correct bitfield mask for schema of the specified type in the specified index.
+ *
+ * @param schema_type Denotes whether the provided schema is static or dynamic.
+ * @param index Index of this schema in its corresponding array.
+ * @return Returns the bitfield mask that can be used in `CCompund::derived_schemas`.
+*/
+__BK_API int get_schema_derive(SchemaType schema_type, size_t index);
 
 // Cleanup functions
 /** @brief free's the contents of a `CCompound` */
@@ -796,7 +896,7 @@ bool get_expect_c(stb_lexer* lex,...); // Unused for now
  * @param out Dynamic array for appending analyzed types.
  * @param derive_all Whether the `BkConfig::derive_all` option is on or not.
 */
-__BK_API void analyze_file(const char* file_name, Schemas schemas, String content, CCompounds* out, bool derive_all);
+__BK_API void analyze_file(const char* file_name, String content, CCompounds* out, bool derive_all);
 /** @} */
 
 /**
@@ -873,23 +973,68 @@ if (bk.conf.disabled_by_default) {\
  * @defgroup codegen Code Generation
  * @brief Code generation functions.
  *
- * These functions iterate over the provided `schemas` dynamic array and
- * call the respective function stored inside each schema. For more information
- * on the specifics of these functions, see `Schema`.
- *
  * @addtogroup codegen
  * @{
 */
-void gen_prelude(String* book_buf);
+/** */
+
+/**
+ * @brief Generates 'prelude' code that will be generated once at the top of each generated file.
+ *
+ * For more information, see `StaticSchema::gen_prelude`.
+ *
+*/
+void gen_prelude(String* book_buf, CCompound* ty);
+
+/**
+ * @brief Generates the declarations of "dump" functions for the specified type.
+ *
+ * For more information, see `StaticSchema::gen_dump_decl`.
+ *
+*/
 size_t gen_dump_decl(String* book_buf, CCompound* ty, const char* dst_type);
+
+/**
+ * @brief Generates the declarations of "parse" functions for the specified type.
+ *
+ * For more information, see `StaticSchema::gen_parse_decl`.
+ *
+*/
 size_t gen_parse_decl(String* book_buf, CCompound* ty);
+
+/**
+ * @brief Generates the implementations of "dump" functions for the specified type.
+ *
+ * For more information, see `StaticSchema::gen_dump_impl`.
+ *
+*/
 void gen_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
+
+/**
+ * @brief Generates the implementations of "parse" functions for the specified type.
+ *
+ * For more information, see `StaticSchema::gen_parse_impl`.
+ *
+*/
 void gen_parse_impl(String* book_buf, CCompound* ty);
+
+/**
+ * @brief Interpretes all loaded dynamic schema code for the specified type.
+ *
+ * To learn about the dynamic schema syntax, see the 'Dynamic Schema' section of the User Documentation.
+ *
+ * @param book_buf The string buffer that is used to store generated code. The @link print_string `print_string` @endlink
+ *        macro available to both this source file and extension authors can be used to output into this buffer.
+ * @param ty The type that this function is meant to generate code for, contains all necessary info for code generation.
+ * @param dst_type The type of the 'dst' parameter that is meant to be used for generated "dump" functions.
+ * @param fmt_macro The name of the macro that is meant to be used **inside generated code** to output into the 'dst' buffer.
+*/
+void gen_dynamic(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
 /** @} */
 
 /**
  * @defgroup jsoncodegen JSON Schema Code
- * @brief All definitions and declarations related to the included JSON `Schema`.
+ * @brief All definitions and declarations related to the included JSON `StaticSchema`.
  * @addtogroup jsoncodegen
  * @{
 */
@@ -903,7 +1048,7 @@ void gen_json_parse_impl(String* book_buf, CCompound* ty);
 
 /**
  * @defgroup debugcodegen Debug Schema Code
- * @brief All definitions and declarations related to the included Debug `Schema`.
+ * @brief All definitions and declarations related to the included Debug `StaticSchema`.
  * @addtogroup debugcodegen
  * @{
 */
@@ -911,24 +1056,11 @@ size_t gen_debug_dump_decl(String* book_buf, CCompound* ty, const char* dst_type
 void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro);
 /** @} */
 
-#ifdef BK_ENABLE_BK_CONF_GEN
-/**
- * @defgroup bkconfcodegen bkconf Schema Code
- * @brief All definitions and declarations related to the included bkconf `Schema`.
- * @addtogroup bkconfcodegen
- * @{
-*/
-size_t gen_bkconf_parse_decl(String* book_buf, CCompound* ty);
-void gen_bkconf_parse_impl(String* book_buf, CCompound* ty);
-/** @} */
-#endif // BK_ENABLE_BK_CONF_GEN
-
-
 /**
  * @defgroup generatedcode Generated Code
  * @brief Code that was generated using `bk`.
  *
- * Generated by enabling `BK_ENABLE_BK_CONF_GEN`
+ * Generated with dynamic schema './examples/bkconf.schema' in the main repository.
  *
  * @addtogroup generatedcode
  * @{
@@ -992,6 +1124,7 @@ bool include_file_cmd(int* i, int argc, char** argv);
 bool include_directory_cmd(int* i, int argc, char** argv);
 bool output_directory_cmd(int* i, int argc, char** argv);
 bool schemas_cmd(int* i, int argc, char** argv);
+bool include_schema_cmd(int* i, int argc, char** argv);
 bool silent_cmd(int* i, int argc, char** argv);
 bool verbose_cmd(int* i, int argc, char** argv);
 bool enable_warn_cmd(int* i, int argc, char** argv);
@@ -1110,6 +1243,13 @@ static Command commands[] = {
         .usage = "--schemas",
         .desc = "Displays a list of loaded schemas",
         .exec_c = schemas_cmd
+    },
+    {
+        .name = "include-schema",
+        .flag = "-is",
+        .usage = "-is <schema-file>",
+        .desc = "Includes a dynamic schema file",
+        .exec_c = include_schema_cmd
     },
     {
         .name = "silent",
@@ -1249,7 +1389,7 @@ int main(int argc, char** argv) {
     
     int ret_val = 0;
 
-    Schema json = {
+    StaticSchema json = {
         .gen_prelude = gen_json_prelude,
         .gen_dump_decl = gen_json_dump_decl, 
         .gen_parse_decl = gen_json_parse_decl, 
@@ -1258,7 +1398,7 @@ int main(int argc, char** argv) {
         .derive_attr = "derive_json",
         .name = "json"
     };
-    Schema debug = {
+    StaticSchema debug = {
         .gen_prelude = NULL,
         .gen_dump_decl = gen_debug_dump_decl, 
         .gen_parse_decl = NULL, 
@@ -1270,20 +1410,7 @@ int main(int argc, char** argv) {
     push_da(&bk.schemas, json);
     push_da(&bk.schemas, debug);
 
-    #ifdef BK_ENABLE_BK_CONF_GEN
-    Schema bkconf = {
-        .gen_prelude = NULL,
-        .gen_dump_decl = NULL, 
-        .gen_parse_decl = gen_bkconf_parse_decl, 
-        .gen_dump_impl = NULL, 
-        .gen_parse_impl = gen_bkconf_parse_impl, 
-        .derive_attr = "derive_bkconf",
-        .name = "bkconf"
-    };
-    push_da(&bk.schemas, bkconf);
-    #endif // BK_ENABLE_BK_CONF_GEN
-
-    // For schema extensions
+    // For static schema extensions
     #ifdef BK_ADD_SCHEMAS
     do {
         BK_ADD_SCHEMAS((bk.schemas))
@@ -1368,7 +1495,6 @@ int main(int argc, char** argv) {
     }
    
     if (bk.conf.include_files != NULL) {
-        // size_t name_start = 0;
         size_t list_len = strlen(bk.conf.include_files);
         if (list_len == 0) {
             bk_log(LOG_ERROR, "Include file list in '%s' is empty.\n", config_path);
@@ -1389,6 +1515,27 @@ int main(int argc, char** argv) {
             push_da(&bk.entries, e);
         }
     }
+
+    if (bk.conf.schema_files != NULL) {
+        size_t list_len = strlen(bk.conf.schema_files);
+        if (list_len == 0) {
+            bk_log(LOG_ERROR, "Schema file list in '%s' is empty.\n", config_path);
+            ret_clean(1);
+        }
+        if (bk.conf.schema_files[0] == ',') {
+            bk_log(LOG_ERROR, "Schema file list in '%s' starts with comma (',')\n", config_path);
+            ret_clean(1);
+        }
+        char* cursor = bk.conf.schema_files;
+        size_t entry_len = 0;
+
+        for (char* ent; (ent = parse_list(&cursor, ',', &entry_len));) {
+            if (!load_dynamic_schema(tfmt("%.*s", (int)entry_len, ent))) {
+                ret_clean(1);
+            }
+        }
+    }
+
 
     if (bk.conf.include_dir == NULL && bk.entries.len == 0) {
         if (bk.conf.warn_no_include) bk_log(LOG_WARN, "No files were included. [-W "WARN_NO_INCLUDE"]\n");
@@ -1494,7 +1641,7 @@ int main(int argc, char** argv) {
                     push_da(&all_types, types.items[i]);
                 };
                 types.len = 0;
-                analyze_file(in_file->name, bk.schemas, file_buf, &types, bk.conf.derive_all);
+                analyze_file(in_file->name, file_buf, &types, bk.conf.derive_all);
                 bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
                 book_buf.len = 0;
                 current_iter = time(NULL);
@@ -1511,9 +1658,10 @@ int main(int argc, char** argv) {
                     print_string(&book_buf, "#ifndef %s\n", bk.conf.offset_type_macro);
                     print_string(&book_buf, "#define %s size_t\n", bk.conf.offset_type_macro);
                     print_string(&book_buf, "#endif // %s\n", bk.conf.offset_type_macro);
-                    gen_prelude(&book_buf);
                     size_t num_decls = 0;
+                    size_t len_before_decls = book_buf.len;
                     for (size_t i = 0; i < types.len; ++i) {
+                        gen_prelude(&book_buf, types.items + i);
                         if (!bk.conf.disable_dump) {
                             num_decls += gen_dump_decl(&book_buf, types.items + i, bk.conf.gen_fmt_dst_macro);
                         }
@@ -1521,18 +1669,25 @@ int main(int argc, char** argv) {
                             num_decls += gen_parse_decl(&book_buf, types.items + i);
                         }
                     }
-                    if (num_decls > 0) {
-                        print_string(&book_buf, "\n#ifdef %s\n", bk.conf.gen_implementation_macro);
-                        for (size_t i = 0; i < types.len; ++i) {
-                            if (!bk.conf.disable_dump) {
-                                gen_dump_impl(&book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro);
+                    if (num_decls > 0 || bk.dynamic_schemas.len > 0) {
+                        if (num_decls > 0) {
+                            print_string(&book_buf, "\n#ifdef %s\n", bk.conf.gen_implementation_macro);
+                            for (size_t i = 0; i < types.len; ++i) {
+                                if (!bk.conf.disable_dump) {
+                                    gen_dump_impl(&book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro);
+                                }
+                                if (!bk.conf.disable_parse) {
+                                    gen_parse_impl(&book_buf, types.items + i);
+                                }
+                                print_string(&book_buf, "\n#define ___BK_INCLUDE_TYPE_%s\n", types.items[i].name);
                             }
-                            if (!bk.conf.disable_parse) {
-                                gen_parse_impl(&book_buf, types.items + i);
-                            }
-                            print_string(&book_buf, "\n#define ___BK_INCLUDE_TYPE_%s\n", types.items[i].name);
+                            print_string(&book_buf, "\n#endif // %s\n", bk.conf.gen_implementation_macro);
+                        } else {
+                            book_buf.len = len_before_decls;
                         }
-                        print_string(&book_buf, "\n#endif // %s\n", bk.conf.gen_implementation_macro);
+                        for (size_t i = 0; i < types.len; ++i) {
+                            gen_dynamic(&book_buf, types.items + i, bk.conf.gen_fmt_dst_macro, bk.conf.gen_fmt_macro);
+                        }
 
                         push_da(&book_buf, '\n');
                         print_string(&book_buf, "#endif // __BK_%lu_%lu_H__\n", in_hash, file_idx);
@@ -1683,8 +1838,167 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < bk.entries.len; ++i) free_entry(bk.entries.items[i]);
         free(bk.entries.items);
     }
+
+    if (bk.dynamic_schemas.items != NULL) free(bk.dynamic_schemas.items);
+
+    for (size_t i = 0; i < bk.dynamic_source.len; ++i) free(bk.dynamic_source.items[i].items);
+    if (bk.dynamic_source.items != NULL) free(bk.dynamic_source.items);
     
     return ret_val;
+}
+
+String_View sv(const char* cstr) {
+    return (String_View) {
+        .items = cstr,
+        .len = strlen(cstr),
+    };
+}
+
+String_View sv_from_parts(const char* items, size_t len) {
+    return (String_View) {
+        .items = items,
+        .len = len,
+    };
+}
+
+String_View sv_from_str(String* str) {
+    return (String_View) {
+        .items = str->items,
+        .len = str->len,
+    };
+}
+
+char* sv_to_cstr(String_View sv) {
+    char* res = malloc(sv.len + 1);
+    memset(res, 0, sv.len + 1);
+    sprintf(res, SV_FMT, SV_ARG(sv));
+    return res;
+}
+
+bool sv_starts_with(String_View sv, String_View prefix) {
+    if (sv.len < prefix.len) return false;
+
+    if (strncmp(sv.items, prefix.items, prefix.len) == 0) return true;
+    
+    return false;
+}
+
+String_View sv_chop(String_View sv, size_t n) {
+    sv_chop2(&sv, n);
+    return sv;
+}
+
+bool sv_chop_if_prefix(String_View* sv, String_View prefix) {
+    if (sv_starts_with(*sv, prefix)) {
+        sv_chop2(sv, prefix.len);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+String_View sv_chop_line(String_View sv, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        sv = sv_find(sv, '\n');
+        sv = sv_chop(sv, 1);
+    }
+    return sv;
+}
+
+void sv_chop2(String_View* sv, size_t n) {
+    size_t cn = n <= sv->len ? n : sv->len;
+
+    sv->items += cn;
+    sv->len -= cn;
+}
+
+String_View sv_trim_start(String_View sv, char c) {
+    String_View res = sv;
+    for (size_t i = 0; i < sv.len; ++i) {
+        if (sv.items[i] == c) {
+            sv_chop2(&res, 1);
+        } else {
+            break;
+        }
+    }
+    return res;
+}
+
+String_View sv_trim2_start(String_View sv, String_View cs) {
+    String_View res = sv;
+    for (size_t i = 0; i < sv.len; ++i) {
+        bool found = false;
+        for (size_t j = 0; j < cs.len; ++j) {
+            if (sv.items[i] == cs.items[j]) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            sv_chop2(&res, 1);
+        } else {
+            break;
+        }
+    }
+    return res;
+}
+
+String_View sv_trim_whitespace_start(String_View sv_) {
+    return sv_trim2_start(sv_, sv(" \t\n"));
+}
+
+String_View sv_trim_whitespace_end(String_View sv) {
+    if (sv.len == 0) return sv;
+    for (;;) {
+        char c = sv.items[sv.len - 1];
+        if (
+        (c == ' ') ||
+        (c == '\n') ||
+        (c == '\t')
+        ) {
+            --sv.len;
+        } else {
+            break;
+        }
+    }
+    return sv;
+}
+
+String_View sv_trim_whitespace(String_View sv) {
+    return sv_trim_whitespace_end(sv_trim_whitespace_start(sv));
+}
+
+String_View sv_find(String_View sv, char c) {
+    String_View res = sv;
+    for (size_t i = 0; i < sv.len; ++i) {
+        if (sv.items[i] != c) {
+            sv_chop2(&res, 1);
+        } else {
+            break;
+        }
+    }
+    return res;
+}
+
+String_View sv_substr(String_View sv, size_t start, size_t len) {
+    // TODO: bounds checks
+    return (String_View) {
+        .items = sv.items + start,
+        .len = len
+    };
+}
+
+void sv_loc(String_View file, String_View cursor, int* line, int* offset) {
+    *line = 1;
+    *offset = 1;
+    for (size_t i = 0; i < (file.len - cursor.len); ++i) {
+        if (file.items[i] == '\n') {
+            *line += 1;
+            *offset = 1;
+        } else {
+            *offset += 1;
+        }
+    }
 }
 
 __BK_API bool read_entire_file_loc(const char* file_name, String* dst, const char* source_file, int source_line) {
@@ -1755,6 +2069,64 @@ __BK_API bool entry_from_file(const char* file_name, Entry* out) {
     out->last_analyzed = 0;
 
     return true;
+}
+
+__BK_API bool load_dynamic_schema_loc(const char* file_name, const char* source_file, int source_line) {
+    String source = {0}; // alloc
+    if (!read_entire_file_loc(file_name, &source, source_file, source_line)) return false;
+
+    String_View schema_source = sv_from_str(&source);
+    String_View cursor = sv_trim_whitespace_start(schema_source);
+
+    String_View name_prefix = sv("name:");
+    String_View derive_prefix = sv("derive:");
+    if (sv_starts_with(cursor, name_prefix)) {
+        cursor = sv_find(cursor, '"');
+        cursor = sv_chop(cursor, 1);
+        String_View name_end = sv_find(cursor, '"');
+        String_View name = sv_substr(cursor, 0, cursor.len - name_end.len);
+        cursor = name_end;
+        cursor = sv_chop(cursor, 1);
+        if (cursor.items[0] != ',') {
+            int line, offset;
+            sv_loc(schema_source, cursor, &line, &offset);
+            bk_diag_loc(LOG_ERROR, file_name, line, offset, "Expected comma (',')\n");
+            free(source.items);
+            return false;
+        }
+        cursor = sv_chop(cursor, 1);
+        cursor = sv_trim_whitespace_start(cursor);
+        if (!sv_starts_with(cursor, derive_prefix)) {
+            int line, offset;
+            sv_loc(schema_source, cursor, &line, &offset);
+            bk_diag_loc(LOG_ERROR, file_name, line, offset, "Expected `derive` field\n");
+            free(source.items);
+            return false;
+        }
+        cursor = sv_chop(cursor, derive_prefix.len);
+        cursor = sv_find(cursor, '"');
+        cursor = sv_chop(cursor, 1);
+        String_View derive_end = sv_find(cursor, '"');
+        String_View derive_attr = sv_substr(cursor, 0, cursor.len - derive_end.len);
+        cursor = derive_end;
+        cursor = sv_chop(cursor, 1);
+        cursor = sv_trim_whitespace_start(cursor);
+        bk_log(LOG_INFO, "Loading dynamic schema '"SV_FMT"' with derive attribute '"SV_FMT"'\n", SV_ARG(name), SV_ARG(derive_attr));
+        DynamicSchema s = {
+            .name = name,
+            .derive_attr = derive_attr,
+            .source = cursor,
+        };
+        push_da(&bk.dynamic_schemas, s);
+        push_da(&bk.dynamic_source, source);
+    } else {
+        int line, offset;
+        sv_loc(schema_source, cursor, &line, &offset);
+        bk_diag_loc(LOG_ERROR, file_name, line, offset, "Expected `name` field\n");
+        free(source.items);
+        return false;
+    }
+    return true;    
 }
 
 // Cleanup functions
@@ -1878,7 +2250,7 @@ bool get_expect_c(stb_lexer* lex, ...) {
     return res;
 }
 
-__BK_API void analyze_file(const char* file_name, Schemas schemas, String content, CCompounds* out, bool derive_all) {
+__BK_API void analyze_file(const char* file_name, String content, CCompounds* out, bool derive_all) {
     static char string_store[4096];
     stb_lexer lex = {0};
     stb_c_lexer_init(&lex, content.items, content.items + content.len, string_store, sizeof string_store);
@@ -1956,7 +2328,8 @@ __BK_API void analyze_file(const char* file_name, Schemas schemas, String conten
                 stb_c_lexer_get_token(&lex); // name
                 field.name = strdup(lex.string); // alloc
                 if (!get_expect_tokens(&lex, ';', -1)) {
-                    bk_diag(LOG_ERROR, "Expected ';'.\n");
+                    // At this point we don't know if we are looking at the right kind of field. So it doesn't make sense to report this.
+                    // bk_diag(LOG_ERROR, "Expected ';'.\n");
                     free_field(field);
                     break;
                 }
@@ -1985,12 +2358,26 @@ __BK_API void analyze_file(const char* file_name, Schemas schemas, String conten
                     strct.derived_schemas |= UINT_MAX;
                     matched = true;
                 } else {
-                    for (size_t i = 0; i < schemas.len; ++i) {
-                        Schema* schema = schemas.items + i;
+                    for (size_t i = 0; i < bk.schemas.len; ++i) {
+                        StaticSchema* schema = bk.schemas.items + i;
                         if (peek_ids(&lex, schema->derive_attr, NULL)) {
-                            strct.derived_schemas |= (1 << i);
+                            strct.derived_schemas |= get_schema_derive(SCHEMA_STATIC, i);
                             matched = true;
                             break;
+                        }
+                    }
+                    if (!matched) {
+                        for (size_t i = 0; i < bk.dynamic_schemas.len; ++i) {
+                            DynamicSchema* schema = bk.dynamic_schemas.items + i;
+                            char* derive_attr = sv_to_cstr(schema->derive_attr);
+                            if (peek_ids(&lex, derive_attr, NULL)) {
+                                strct.derived_schemas |= get_schema_derive(SCHEMA_DYNAMIC, i);
+                                matched = true;
+                                free(derive_attr);
+                                break;
+                            } else {
+                                free(derive_attr);
+                            }
                         }
                     }
                 }
@@ -2011,13 +2398,26 @@ __BK_API void analyze_file(const char* file_name, Schemas schemas, String conten
     }
 }
 
-void gen_prelude(String* book_buf) {
+__BK_API int get_schema_derive(SchemaType schema_type, size_t index) {
+    switch (schema_type) {
+    case SCHEMA_STATIC: {
+        return (1 << index);
+    } break;
+    case SCHEMA_DYNAMIC: {
+        return (1 << (index + bk.schemas.len));
+    } break;
+    }
+}
+
+void gen_prelude(String* book_buf, CCompound* ty) {
     for (size_t i = 0; i < bk.schemas.len; ++i) {
-        Schema* s = bk.schemas.items + i;
-        print_string(book_buf, "#ifndef ___BK_PRELUDE_%s___\n", s->name);
-        print_string(book_buf, "#define ___BK_PRELUDE_%s___\n", s->name);
-        if (s->gen_prelude != NULL) s->gen_prelude(book_buf);
-        print_string(book_buf, "#endif // ___BK_PRELUDE_%s___\n", s->name);
+        StaticSchema* s = bk.schemas.items + i;
+        if (ty->derived_schemas & get_schema_derive(SCHEMA_STATIC, i)) {
+            print_string(book_buf, "#ifndef ___BK_PRELUDE_%s___\n", s->name);
+            print_string(book_buf, "#define ___BK_PRELUDE_%s___\n", s->name);
+            if (s->gen_prelude != NULL) s->gen_prelude(book_buf);
+            print_string(book_buf, "#endif // ___BK_PRELUDE_%s___\n", s->name);
+        }
     }
 }
 
@@ -2027,8 +2427,8 @@ size_t gen_dump_decl(String* book_buf, CCompound* ty, const char* dst_type) {
     gen_def_guard(BK_DUMP_UPPER);
     print_string(book_buf, "\n");
     for (size_t i = 0; i < bk.schemas.len; ++i) {
-        Schema* schema = bk.schemas.items + i;
-        if (ty->derived_schemas & (1 << i)) {
+        StaticSchema* schema = bk.schemas.items + i;
+        if (ty->derived_schemas & get_schema_derive(SCHEMA_STATIC, i)) {
             if (schema->gen_dump_decl != NULL) {
                 gen_def_type_guard(BK_DUMP_UPPER);
                 count += schema->gen_dump_decl(book_buf, ty, dst_type);
@@ -2046,8 +2446,8 @@ size_t gen_parse_decl(String* book_buf, CCompound* ty) {
     gen_def_guard(BK_PARSE_UPPER);
     print_string(book_buf, "\n");
     for (size_t i = 0; i < bk.schemas.len; ++i) {
-        Schema* schema = bk.schemas.items + i;
-        if (ty->derived_schemas & (1 << i)) {
+        StaticSchema* schema = bk.schemas.items + i;
+        if (ty->derived_schemas & get_schema_derive(SCHEMA_STATIC, i)) {
             if (schema->gen_parse_decl != NULL) {
                 gen_def_type_guard(BK_PARSE_UPPER);
                 count += schema->gen_parse_decl(book_buf, ty);
@@ -2064,8 +2464,8 @@ void gen_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, const 
     gen_def_guard(BK_DUMP_UPPER);
     print_string(book_buf, "\n");
     for (size_t i = 0; i < bk.schemas.len; ++i) {
-        Schema* schema = bk.schemas.items + i;
-        if (ty->derived_schemas & (1 << i)) {
+        StaticSchema* schema = bk.schemas.items + i;
+        if (ty->derived_schemas & get_schema_derive(SCHEMA_STATIC, i)) {
             if (schema->gen_dump_impl != NULL) {
                 gen_def_type_guard(BK_DUMP_UPPER);
                 schema->gen_dump_impl(book_buf, ty, dst_type, fmt_macro);
@@ -2081,8 +2481,8 @@ void gen_parse_impl(String* book_buf, CCompound* ty) {
     gen_def_guard(BK_PARSE_UPPER);
     print_string(book_buf, "\n");
     for (size_t i = 0; i < bk.schemas.len; ++i) {
-        Schema* schema = bk.schemas.items + i;
-        if (ty->derived_schemas & (1 << i)) {
+        StaticSchema* schema = bk.schemas.items + i;
+        if (ty->derived_schemas & get_schema_derive(SCHEMA_STATIC, i)) {
             if (schema->gen_parse_impl != NULL) {
                 gen_def_type_guard(BK_PARSE_UPPER);
                 schema->gen_parse_impl(book_buf, ty);
@@ -2091,6 +2491,315 @@ void gen_parse_impl(String* book_buf, CCompound* ty) {
         }
     }
     gen_endif_guard(BK_PARSE_UPPER);
+}
+
+void gen_dynamic(String* book_buf, CCompound* ty, const char* dst_type, const char* fmt_macro) {
+    // Honestly the current implementation of this is a mess, this function should be cleaned up.
+    if (ty->derived_schemas == 0) return;
+    print_string(book_buf, "\n#ifndef %s%s\n", bk.conf.disable_macro_prefix, ty->name);
+    for (size_t schema_i = 0; schema_i < bk.dynamic_schemas.len; ++schema_i) {
+        String impl = {0}; // alloc
+        DynamicSchema* schema = bk.dynamic_schemas.items + schema_i;
+        print_string(book_buf, "\n#ifndef %s"SV_FMT"\n", bk.conf.disable_macro_prefix, SV_ARG(schema->name));
+        String_View cursor = sv_trim_whitespace_start(schema->source);
+        bool in_special = false;
+        bool in_loop = false;
+        bool in_if = false;
+        String_View current_type_name = {0};
+        String_View special_start = cursor;
+        String_View normal_start = cursor;
+        String_View special_prefix = sv("$");
+        while (cursor.len > 0) {
+            if (sv_starts_with(cursor, special_prefix)) {
+                if (in_special) {
+                    in_special = false;
+                    String_View special = sv_substr(special_start, 0, special_start.len - cursor.len);
+                    special = sv_trim_whitespace_start(special);
+                    if (sv_chop_if_prefix(&special, sv("ty"))) {
+                        if (in_loop) {
+                            print_string(&impl, "%s", ty->name);
+                        } else {
+                            print_string(book_buf, "%s", ty->name);
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("implguard"))) {
+                        print_string(book_buf, "\n#ifdef %s\n", bk.conf.gen_implementation_macro);
+                    } else if (sv_chop_if_prefix(&special, sv("endimplguard"))) {
+                        print_string(book_buf, "\n#endif // %s\n", bk.conf.gen_implementation_macro);
+                    } else if (sv_chop_if_prefix(&special, sv("dumpguard"))) {
+                        print_string(book_buf, "\n#ifndef %s"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix);
+                        print_string(book_buf, "\n#ifndef %s%s_"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix, ty->name);
+                    } else if (sv_chop_if_prefix(&special, sv("enddumpguard"))) {
+                        print_string(book_buf, "\n#endif // %s%s_"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix, ty->name);
+                        print_string(book_buf, "\n#endif // %s"BK_DUMP_UPPER"\n", bk.conf.disable_macro_prefix);
+                    } else if (sv_chop_if_prefix(&special, sv("parseguard"))) {
+                        print_string(book_buf, "\n#ifndef %s"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix);
+                        print_string(book_buf, "\n#ifndef %s%s_"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix, ty->name);
+                    } else if (sv_chop_if_prefix(&special, sv("endparseguard"))) {
+                        print_string(book_buf, "\n#endif // %s%s_"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix, ty->name);
+                        print_string(book_buf, "\n#endif // %s"BK_PARSE_UPPER"\n", bk.conf.disable_macro_prefix);
+                    } else if (sv_chop_if_prefix(&special, sv("fmt"))) {
+                        if (in_loop) {
+                            print_string(&impl, "%s", fmt_macro);
+                        } else {
+                            print_string(book_buf, "%s", fmt_macro);
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("dst"))) {
+                        if (in_loop) {
+                            print_string(&impl, "%s", dst_type);
+                        } else {
+                            print_string(book_buf, "%s", dst_type);
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("offset"))) {
+                        if (in_loop) {
+                            print_string(&impl, "%s", bk.conf.offset_type_macro);
+                        } else {
+                            print_string(book_buf, "%s", bk.conf.offset_type_macro);
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("it"))) {
+                        if (in_loop) {
+                            if (sv_chop_if_prefix(&special, sv(".type"))) {
+                                print_string(&impl, SV_FMT"type"SV_FMT, SV_ARG(special_prefix), SV_ARG(special_prefix));
+                            } else {
+                                print_string(&impl, SV_FMT"field"SV_FMT, SV_ARG(special_prefix), SV_ARG(special_prefix));
+                            }
+                        } else {
+                            bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': 'it' directives can't be used outside of for loops\n", SV_ARG(schema->name));
+                            goto __continue_free;
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("tag"))) {
+                        if (in_loop) {
+                            print_string(&impl, SV_FMT"tag"SV_FMT, SV_ARG(special_prefix), SV_ARG(special_prefix));
+                        } else {
+                            bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': 'tag' directive can't be used outside of for loops\n", SV_ARG(schema->name));
+                            goto __continue_free;
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("for"))) {
+                        if (in_loop) {
+                            bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': Nested for loops aren't supported\n", SV_ARG(schema->name));
+                            goto __continue_free;
+                        } else {
+                            if (sv_find(special, '{').items[0] != '{') {
+                                bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': Expected '{' in for loop\n", SV_ARG(schema->name));
+                                goto __continue_free;
+                            } else {
+                                in_loop = true;
+                            }
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("if"))) {
+                        if (sv_find(special, '{').items[0] != '{') {
+                            bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': Expected '{' in if cond\n", SV_ARG(schema->name));
+                            goto __continue_free;
+                        } else {
+                            in_if = true;
+                        }
+                        special = sv_trim_whitespace_start(special);
+                        String_View cond = sv_substr(special, 0, special.len - sv_find(special, ' ').len);
+                        if (sv_starts_with(cond, sv("index")) && in_loop) {
+                            cond = special;
+                            cond = sv_chop(cond, 5);
+                            cond = sv_trim_whitespace_start(cond);
+                            String_View op_v = sv_substr(cond, 0, cond.len - sv_find(cond, ' ').len);
+                            cond = sv_find(cond, ' ');
+                            cond = sv_trim_whitespace_start(cond);
+                            String_View value_v = sv_substr(cond, 0, cond.len - sv_find(cond, ' ').len);
+                            if (sv_starts_with(op_v, sv("=="))) {
+                                print_string(&impl, "$if == "SV_FMT" {$", SV_ARG(value_v));
+                            } else if (sv_starts_with(op_v, sv("!="))) {
+                                print_string(&impl, "$if != "SV_FMT" {$", SV_ARG(value_v));
+                            } else {
+                                bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': Unknown binary op '"SV_FMT"' in if cond\n", SV_ARG(schema->name), SV_ARG(op_v));
+                                goto __continue_free;
+                            }
+
+                        } else {
+                            current_type_name = cond;
+                            print_string(&impl, "$if "SV_FMT" {$", SV_ARG(current_type_name));
+                        }
+                    } else if (sv_chop_if_prefix(&special, sv("}"))) {
+                        if (in_if) {
+                            in_if = false;
+                            print_string(&impl, "$}$");
+                        } else {
+                            if (in_loop) {
+                                in_loop = false;
+                                for (size_t field_i = 0; field_i < ty->fields.len; ++field_i) {
+                                    Field* field = ty->fields.items + field_i;
+                                    String_View cursor = sv_from_str(&impl);
+                                    String_View special_start = cursor;
+                                    String_View normal_start = cursor;
+                                    bool in_special = false;
+                                    bool in_if = false;
+                                    bool in_if_cond_true = false;
+                                    bool in_correct_type = false;
+                                    // Not doing syntax error checks error since this is generated intermediate code
+                                    while (cursor.len > 0) {
+                                        if (sv_starts_with(cursor, special_prefix)) {
+                                            if (in_special) {
+                                                in_special = false;
+                                                String_View special = sv_substr(special_start, 0, special_start.len - cursor.len);
+                                                special = sv_trim_whitespace_start(special);
+                                                if (sv_chop_if_prefix(&special, sv("if"))) {
+                                                    in_if = true;
+                                                    in_if_cond_true = false;
+                                                    in_correct_type = false;
+                                                    special = sv_trim_whitespace_start(special);
+                                                    String_View cond = sv_substr(special, 0, special.len - sv_find(special, ' ').len);
+                                                    if (sv_chop_if_prefix(&cond, sv("=="))) {
+                                                        String_View value_v = sv_substr(cond, 0, cond.len - sv_find(cond, ' ').len);
+                                                        char* value_c = sv_to_cstr(value_v); // alloc
+                                                        size_t value = (size_t)(atoi(value_c));
+                                                        if (value == field_i) in_if_cond_true = true;
+                                                        free(value_c);
+                                                    } else if (sv_chop_if_prefix(&cond, sv("!="))) {
+                                                        String_View value_v = sv_substr(cond, 0, cond.len - sv_find(cond, ' ').len);
+                                                        char* value_c = sv_to_cstr(value_v); // alloc
+                                                        size_t value = (size_t)(atoi(value_c));
+                                                        if (value != field_i) in_if_cond_true = true;
+                                                        free(value_c);
+                                                    } else {
+                                                        String_View type_name = cond;
+                                                        switch (field->type.kind) {
+                                                        case CPRIMITIVE: {
+                                                        switch (field->type.type) {
+                                                        case CINT: {
+                                                            if (sv_starts_with(type_name, sv("CINT"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        case CUINT: {
+                                                            if (sv_starts_with(type_name, sv("CUINT"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        case CLONG: {
+                                                            if (sv_starts_with(type_name, sv("CLONG"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        case CULONG: {
+                                                            if (sv_starts_with(type_name, sv("CULONG"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        case CCHAR: {
+                                                            if (sv_starts_with(type_name, sv("CCHAR"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        case CFLOAT: {
+                                                            if (sv_starts_with(type_name, sv("CFLOAT"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        case CBOOL: {
+                                                            if (sv_starts_with(type_name, sv("CBOOL"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        case CSTRING: {
+                                                            if (sv_starts_with(type_name, sv("CSTRING"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        }
+                                                        } break;
+                                                        case CEXTERNAL: {
+                                                            if (sv_starts_with(type_name, sv("CEXTERNAL"))) {
+                                                                in_if_cond_true = true;
+                                                                in_correct_type = true;
+                                                            }
+                                                        } break;
+                                                        }
+                                                    }
+                                                } else if (sv_chop_if_prefix(&special, sv("}"))) {
+                                                    in_if_cond_true = false;
+                                                    in_correct_type = false;
+                                                    in_if = false;
+                                                } else if (sv_chop_if_prefix(&special, sv("type"))) {
+                                                    if (field->type.kind == CEXTERNAL && in_correct_type) {
+                                                        if ((in_if && in_correct_type) || !in_if)
+                                                            print_string(book_buf, "%s", field->type.name);
+                                                    } else if (in_correct_type) {
+                                                        bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': $it.type$ can only be used in CEXTERNAL fields.\n", SV_ARG(schema->name));
+                                                        goto __continue_free;
+                                                    }
+                                                } else if (sv_chop_if_prefix(&special, sv("tag"))) {
+                                                    if ((in_if && in_if_cond_true) || !in_if)
+                                                        print_string(book_buf, "%s", field->tag ? field->tag : field->name);
+                                                } else if (sv_chop_if_prefix(&special, sv("field"))) {
+                                                    if ((in_if && in_if_cond_true) || !in_if)
+                                                        print_string(book_buf, "%s", field->name);
+                                                } else {
+                                                    bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': '"SV_FMT"': INTERNAL ERROR REPORT AS BUG IF ENCOUNTERED\n", SV_ARG(schema->name), SV_ARG(special));
+                                                    break;
+                                                }
+                                                cursor = sv_chop(cursor, special_prefix.len);
+                                                normal_start = cursor;
+                                            } else {
+                                                in_special = true;
+                                                if (cursor.len > 1) {
+                                                    if ((in_if && in_if_cond_true) || !in_if) {
+                                                        String_View v = sv_substr(normal_start, 0, normal_start.len - cursor.len);
+                                                        print_string(book_buf, SV_FMT, SV_ARG(sv_trim_whitespace(v)));
+                                                    }
+                                                }
+                                                cursor = sv_chop(cursor, special_prefix.len);
+                                                special_start = cursor;
+                                            }
+                                        } else {
+                                            cursor = sv_chop(cursor, 1);
+                                        }
+                                    }
+                                    String_View v = sv_substr(normal_start, 0, normal_start.len - cursor.len);
+                                    print_string(book_buf, SV_FMT, SV_ARG(sv_trim_whitespace(v)));
+                                }
+                                impl.len = 0;                                
+                            } else {
+                                bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': Mismatched '}'\n", SV_ARG(schema->name));
+                                goto __continue_free;
+                            }
+                        }
+                    } else {
+                        bk_log(LOG_ERROR, "In dynamic schema '"SV_FMT"': Unknown special directive '"SV_FMT"'\n", SV_ARG(schema->name), SV_ARG(special));
+                        goto __continue_free;
+                    }
+                    cursor = sv_chop(cursor, special_prefix.len);
+                    normal_start = cursor;
+                } else {
+                    in_special = true;
+                    if (cursor.len > 1) {
+                        if (in_loop) {
+                            print_string(&impl, SV_FMT, SV_ARG_N(normal_start, normal_start.len - cursor.len));
+                        } else {
+                            String_View v = sv_substr(normal_start, 0, normal_start.len - cursor.len);
+                            print_string(book_buf, SV_FMT, SV_ARG(v));
+                        }
+                    }
+                    cursor = sv_chop(cursor, special_prefix.len);
+                    special_start = cursor;
+                }
+            } else {
+                cursor = sv_chop(cursor, 1);
+            }
+        }
+        String_View post_loop = sv_substr(normal_start, 0, normal_start.len - cursor.len);
+
+
+        print_string(book_buf, "\n"SV_FMT, SV_ARG(sv_trim_whitespace(post_loop)));
+
+        print_string(book_buf, "\n#endif // %s"SV_FMT"\n", bk.conf.disable_macro_prefix, SV_ARG(schema->name));
+        __continue_free:
+        free(impl.items);
+    }
+    print_string(book_buf, "\n#endif // %s%s\n", bk.conf.disable_macro_prefix, ty->name);
 }
 
 // JSON generation
@@ -2291,90 +3000,6 @@ void gen_debug_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, 
     print_string(book_buf, "    __indent_dump_debug_%s(item, dst, 0);\n", ty->name);
     print_string(book_buf, "}\n");
 }
-
-#ifdef BK_ENABLE_BK_CONF_GEN
-// bkconf generation
-size_t gen_bkconf_parse_decl(String* book_buf, CCompound* ty) {
-    print_string(book_buf, "int parse_bkconf_%s(const char* src, unsigned long len, %s* dst);\n", ty->name, ty->name);
-    return 1;
-}
-void gen_bkconf_parse_impl(String* book_buf, CCompound* ty) {
-    print_string(book_buf, "int parse_bkconf_%s(const char* src, unsigned long len, %s* dst) {\n", ty->name, ty->name);
-    // print_string(book_buf, "    int powi(int a, int b) { int res = 1; for (int i = 0; i < b; ++i) { res *= a; } return res; }\n");
-    print_string(book_buf, "    char str_buf[512] = {0};\n");
-    print_string(book_buf, "    const char* name_start = src;\n");
-    print_string(book_buf, "    const char* name_end = src;\n");
-    print_string(book_buf, "    const char* value_start = src;\n");
-    print_string(book_buf, "    const char* value_end = src;\n");
-    print_string(book_buf, "    double value_double = 0; (void)value_double;\n");
-    print_string(book_buf, "    long value_int = 0;\n");
-    print_string(book_buf, "    bool value_bool = false;\n");
-    print_string(book_buf, "    for (const char* cur = src; cur < (src + len); ++cur) {\n");
-    print_string(book_buf, "        if (*cur == '#') {\n");
-    print_string(book_buf, "            for (; cur < (src + len); ++cur) {\n");
-    print_string(book_buf, "                if (*cur == '\\n') {\n");
-    print_string(book_buf, "                    ++cur;\n");
-    print_string(book_buf, "                    name_start = cur;\n");
-    print_string(book_buf, "                    break;\n");
-    print_string(book_buf, "                }\n");
-    print_string(book_buf, "            }\n");
-    print_string(book_buf, "        } else if (*cur == '\\n') {\n");
-    print_string(book_buf, "            value_end = cur - 1;\n");
-    print_string(book_buf, "            value_int = atol(value_start);\n");
-    print_string(book_buf, "            value_double = atof(value_start);\n");
-    print_string(book_buf, "            if (strncmp(value_start, \"true\", 4) == 0) value_bool = true;\n");
-    print_string(book_buf, "            if (strncmp(value_start, \"false\", 5) == 0) value_bool = false;\n");
-    print_string(book_buf, "            str_buf[sprintf(str_buf, \"%%.*s\", (int)(name_end - name_start) + 1, name_start)] = 0;\n");
-    for (size_t i = 0; i < ty->fields.len; ++i) {
-        if (i == 0) {
-            print_string(book_buf, "            if (strcmp(str_buf, \"%s\") == 0) {\n", ty->fields.items[i].name);
-        } else {
-            print_string(book_buf, " else if (strcmp(str_buf, \"%s\") == 0) {\n", ty->fields.items[i].name);
-        }
-        switch (ty->fields.items[i].type.kind) {
-
-        case CPRIMITIVE: {
-            switch (ty->fields.items[i].type.type) {
-
-            case CINT: case CUINT: case CLONG: case CULONG: {
-                print_string(book_buf, "                dst->%s = value_int;\n", ty->fields.items[i].name);
-            } break;
-            case CCHAR: {
-                print_string(book_buf, "                dst->%s = *value_start;\n", ty->fields.items[i].name);
-            } break;
-            case CFLOAT: {
-                print_string(book_buf, "                dst->%s = value_double;\n", ty->fields.items[i].name);
-            } break;
-            case CBOOL: {
-                print_string(book_buf, "                dst->%s = value_bool;\n", ty->fields.items[i].name);
-            } break;
-            case CSTRING: {
-                print_string(book_buf, "                str_buf[sprintf(str_buf, \"%%.*s\", (int)(value_end - value_start) + 1, value_start)] = 0;\n");
-                print_string(book_buf, "                dst->%s = strdup(str_buf);\n", ty->fields.items[i].name);
-                print_string(book_buf, "                str_buf[sprintf(str_buf, \"%%.*s\", (int)(name_end - name_start) + 1, name_start)] = 0;\n");
-            } break;
-            }
-        } break;
-        case CEXTERNAL: {
-            bk_log(LOG_ERROR, "CEXTERNAL NOT SUPPORTED IN BKCONF\n");
-            abort();         
-        } break;
-        }
-
-        print_string(book_buf, "            }");
-    }
-    print_string(book_buf, "\n");
-
-    print_string(book_buf, "            name_start = cur + 1;\n");
-    print_string(book_buf, "        } else if (*cur == '=') {\n");
-    print_string(book_buf, "            name_end = cur - 1;\n");
-    print_string(book_buf, "            value_start = cur + 1;\n");
-    print_string(book_buf, "        }\n");
-    print_string(book_buf, "    }\n");
-    print_string(book_buf, "    return 1;\n");
-    print_string(book_buf, "}\n");
-}
-#endif // BK_ENABLE_BK_CONF_GEN
 
 bool help_cmd(int* i, int argc, char** argv) {
     (void)bk;
@@ -2585,6 +3210,14 @@ bool schemas_cmd(int* i, int argc, char** argv) {
     return true;
 }
 
+bool include_schema_cmd(int* i, int argc, char** argv) {
+    if (++*i < argc) {
+        if (!load_dynamic_schema(argv[*i])) return false;
+        return true;
+    }
+    return false;    
+}
+
 bool silent_cmd(int* i, int argc, char** argv) {
     (void)i;
     (void)argc;
@@ -2655,7 +3288,7 @@ bool derive_cmd(int* i, int argc, char** argv) {
         bool found = false;
         for (size_t j = 0; j < bk.schemas.len; ++j) {
             if (strcmp(name, bk.schemas.items[j].name) == 0) {
-                bk.derive_schemas |= (1 << j);
+                bk.derive_schemas |= get_schema_derive(SCHEMA_STATIC, j);
                 found = true;
                 break;
             }
@@ -2761,104 +3394,62 @@ static char* parse_list(char** src, char sep, size_t* entry_len) {
     return NULL;
 }
 
-// Generated code, generated by enabling `BK_ENABLE_BK_CONF_GEN`
+// Generated code, generated with dynamic schema './examples/bkconf.schema'
 int parse_bkconf_BkConfig(const char* src, unsigned long len, BkConfig* dst) {
-    char str_buf[512] = {0};
-    const char* name_start = src;
-    const char* name_end = src;
-    const char* value_start = src;
-    const char* value_end = src;
-    double value_double = 0; (void)value_double;
-    long value_int = 0;
-    bool value_bool = false;
-    for (const char* cur = src; cur < (src + len); ++cur) {
-        if (*cur == '#') {
-            for (; cur < (src + len); ++cur) {
-                if (*cur == '\n') {
-                    ++cur;
-                    name_start = cur;
-                    break;
-                }
-            }
-        } else if (*cur == '\n') {
-            value_end = cur - 1;
-            value_int = atol(value_start);
-            value_double = atof(value_start);
-            if (strncmp(value_start, "true", 4) == 0) value_bool = true;
-            if (strncmp(value_start, "false", 5) == 0) value_bool = false;
-            str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            if (strcmp(str_buf, "output_mode") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->output_mode = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "generics") == 0) {
-                dst->generics = value_bool;
-            } else if (strcmp(str_buf, "silent") == 0) {
-                dst->silent = value_bool;
-            } else if (strcmp(str_buf, "verbose") == 0) {
-                dst->verbose = value_bool;
-            } else if (strcmp(str_buf, "warn_unknown_attr") == 0) {
-                dst->warn_unknown_attr = value_bool;
-            } else if (strcmp(str_buf, "warn_no_include") == 0) {
-                dst->warn_no_include = value_bool;
-            } else if (strcmp(str_buf, "warn_no_output") == 0) {
-                dst->warn_no_output = value_bool;
-            } else if (strcmp(str_buf, "disable_dump") == 0) {
-                dst->disable_dump = value_bool;
-            } else if (strcmp(str_buf, "disable_parse") == 0) {
-                dst->disable_parse = value_bool;
-            } else if (strcmp(str_buf, "disabled_by_default") == 0) {
-                dst->disabled_by_default = value_bool;
-            } else if (strcmp(str_buf, "watch_mode") == 0) {
-                dst->watch_mode = value_bool;
-            } else if (strcmp(str_buf, "watch_delay") == 0) {
-                dst->watch_delay = value_int;
-            } else if (strcmp(str_buf, "gen_fmt_macro") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->gen_fmt_macro = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "gen_implementation_macro") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->gen_implementation_macro = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "gen_fmt_dst_macro") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->gen_fmt_dst_macro = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "offset_type_macro") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->offset_type_macro = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "disable_macro_prefix") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->disable_macro_prefix = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "enable_macro_prefix") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->enable_macro_prefix = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "derive_all") == 0) {
-                dst->derive_all = value_bool;
-            } else if (strcmp(str_buf, "include_dir") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->include_dir = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "include_files") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->include_files = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            } else if (strcmp(str_buf, "output_dir") == 0) {
-                str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
-                dst->output_dir = strdup(str_buf);
-                str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
-            }
-            name_start = cur + 1;
-        } else if (*cur == '=') {
-            name_end = cur - 1;
-            value_start = cur + 1;
-        }
-    }
-    return 1;
+	char str_buf[512] = {0};
+	const char* name_start = src;
+	const char* name_end = src;
+	const char* value_start = src;
+	const char* value_end = src;
+	double value_double = 0; (void)value_double;
+	long value_int = 0;
+	bool value_bool = false;
+	for (const char* cur = src; cur < (src + len); ++cur) {
+		if (*cur == '#') {
+			for (; cur < (src + len); ++cur) {
+				if (*cur == '\n') {
+					++cur;
+					name_start = cur;
+					break;
+				}
+			}
+		} else if (*cur == '\n') {
+			value_end = cur - 1;
+			value_int = atol(value_start);
+			value_double = atof(value_start);
+			if (strncmp(value_start, "true", 4) == 0) value_bool = true;
+			if (strncmp(value_start, "false", 5) == 0) value_bool = false;
+			str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;
+			if (strcmp(str_buf, "output_mode") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->output_mode= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "generics") == 0) {dst->generics= value_bool;}else if (strcmp(str_buf, "silent") == 0) {dst->silent= value_bool;}else if (strcmp(str_buf, "verbose") == 0) {dst->verbose= value_bool;}else if (strcmp(str_buf, "warn_unknown_attr") == 0) {dst->warn_unknown_attr= value_bool;}else if (strcmp(str_buf, "warn_no_include") == 0) {dst->warn_no_include= value_bool;}else if (strcmp(str_buf, "warn_no_output") == 0) {dst->warn_no_output= value_bool;}else if (strcmp(str_buf, "disable_dump") == 0) {dst->disable_dump= value_bool;}else if (strcmp(str_buf, "disable_parse") == 0) {dst->disable_parse= value_bool;}else if (strcmp(str_buf, "disabled_by_default") == 0) {dst->disabled_by_default= value_bool;}else if (strcmp(str_buf, "watch_mode") == 0) {dst->watch_mode= value_bool;}else if (strcmp(str_buf, "watch_delay") == 0) {dst->watch_delay= value_int;}else if (strcmp(str_buf, "gen_fmt_macro") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->gen_fmt_macro= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "gen_implementation_macro") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->gen_implementation_macro= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "gen_fmt_dst_macro") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->gen_fmt_dst_macro= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "offset_type_macro") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->offset_type_macro= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "disable_macro_prefix") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->disable_macro_prefix= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "enable_macro_prefix") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->enable_macro_prefix= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "derive_all") == 0) {dst->derive_all= value_bool;}else if (strcmp(str_buf, "include_dir") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->include_dir= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "include_files") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->include_files= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "schema_files") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->schema_files= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}else if (strcmp(str_buf, "output_dir") == 0) {str_buf[sprintf(str_buf, "%.*s", (int)(value_end - value_start) + 1, value_start)] = 0;
+					dst->output_dir= strdup(str_buf);
+					str_buf[sprintf(str_buf, "%.*s", (int)(name_end - name_start) + 1, name_start)] = 0;}
+			name_start = cur + 1;
+		} else if (*cur == '=') {
+			name_end = cur - 1;
+			value_start = cur + 1;
+		}
+	}
+	return 0;
 }
 
 #endif // __BOOKKEEPER_GEN_C__

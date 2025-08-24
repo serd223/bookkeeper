@@ -19,20 +19,10 @@ typedef struct {
 
 #define BK_DISABLE_json_PARSE
 
-// If we were using the --disabled option, these would be
-// the definitions we would use.
-// #define BK_ENABLE_Person_DUMP
-// #define BK_ENABLE_Manager_DUMP
-// #define BK_ENABLE_ManagerWithSalary_DUMP
-
 #define BK_IMPLEMENTATION
 #include "people.h.bk.h"
 #include "dump_people.c.bk.h"
 
-// If we were using the --disabled option, these would be
-// the definitions we would use.
-// #define BK_ENABLE_json_DUMP
-// #define BK_ENABLE_debug_DUMP
 #include "../gen/generics.h"
 
 int main(void) {
@@ -58,5 +48,8 @@ int main(void) {
     dump_debug(&manager_with_salary, stdout);
     printf("\n\n[INFO] Debug Output of manager_personal:\n");
     dump_debug(&manager_personal, stdout);
+    printf("\n[INFO] Dynamic Schema Output of manager_personal:\n");
+    dump_dynamic_Person(&manager_personal, stdout);
+    printf("\n");
     return 0;
 }
