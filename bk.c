@@ -1574,6 +1574,9 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < bk.schemas.len; ++i) {
             print_string(&book_buf, "#define %s(...)\n", bk.schemas.items[i].derive_attr);
         }
+        for (size_t i = 0; i < bk.dynamic_schemas.len; ++i) {
+            print_string(&book_buf, "#define "SV_FMT"(...)\n", SV_ARG(bk.dynamic_schemas.items[i].derive_attr));
+        }
         print_string(&book_buf, "#endif // __DERIVES_H__\n");
         write_entire_file(tfmt("%s/derives.h", bk.conf.output_dir), &book_buf);
     }
