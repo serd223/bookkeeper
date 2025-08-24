@@ -2164,13 +2164,15 @@ void gen_json_dump_impl(String* book_buf, CCompound* ty, const char* dst_type, c
 }
 void gen_json_parse_impl(String* book_buf, CCompound* ty) {
     print_string(book_buf, "BkJSON_Result parse_cjson_%s(cJSON* src, %s* dst) {\n", ty->name, ty->name);
+    print_string(book_buf, "    BkJSON_Result _res = 0; (void)_res;\n");
     for (size_t i = 0; i < ty->fields.len; ++i) {
         Field* f = ty->fields.items + i;
         char* tag = f->tag ? f->tag : f->name;
         print_string(book_buf, "    cJSON* %s_%s = cJSON_GetObjectItemCaseSensitive(src, \"%s\");\n", ty->name, f->name, tag);
         print_string(book_buf, "    if (!%s_%s) return BKJSON_FIELD_NOT_FOUND;\n", ty->name, f->name);
         if (f->type.kind == CEXTERNAL) {
-            print_string(book_buf, "    if (!parse_cjson_%s(%s_%s, &dst->%s)) return BKJSON_cJSON_ERROR;\n", f->type.name, ty->name, f->name, f->name);
+            print_string(book_buf, "    _res = parse_cjson_%s(%s_%s, &dst->%s);\n", f->type.name, ty->name, f->name, f->name);
+            print_string(book_buf, "    if (_res) return _res;\n");
         } else if (f->type.kind == CPRIMITIVE) {
             switch (f->type.type) {
             case CINT: case CUINT: {
