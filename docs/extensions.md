@@ -70,10 +70,10 @@ $dumpguard$
 void dump_dynamic_$ty$($ty$* item, $dst$ dst);
 $enddumpguard$
 ```
-Here we see our first special directives (surrounded by '$'s). Let's break them down one by one.
- * $dumpguard$: Generates the necessary `#ifndef BK_DISABLE_*` guards for dump functions.
- * $enddumpguard$: Generates the matching `#endif`s for  $dumpguard$.
- * $ty$: This will be replaced with the processed type's name while interpreting this file. So if you were to use this dynamic schema with a type named 'MyStruct', $ty$ would get replaced by 'MyStruct' while generating code for that type.
+Here we see our first special directives (surrounded by `$`s). Let's break them down one by one.
+ * `$dumpguard$`: Generates the necessary `#ifndef BK_DISABLE_*` guards for dump functions.
+ * `$enddumpguard$`: Generates the matching `#endif`s for  $dumpguard$.
+ * `$ty$`: This will be replaced with the processed type's name while interpreting this file. So if you were to use this dynamic schema with a type named 'MyStruct', `$ty$` would get replaced by 'MyStruct' while generating code for that type.
 
 After you're done with your declarations, you can move on to your implementations.
 ```c
@@ -106,11 +106,11 @@ $enddumpguard$
 $endimplguard$
 ```
 Here we see many new special directives, let's break them down one by one. Starting with the simpler ones:
- * $implguard$: Generates the `#ifdef BK_IMPLEMENTATION` (or whatever you set the implementation macro to be) implementation guard.
- * $endimplguard$: Generates the matching `#endif` for $implguard$.
- * $dst$: Replaced with `BK_FMT_DST_t` or whatever you set that macro to be.
- * $offset$: Replaced with `BK_OFFSET_t` or whatever you set that macro to be. Most `BK_FMT`/format functions expect a variable of type $offset$ named `offset` to be in scope. We used the `(void)offset;` trick in the provided example to suppress unused variable warnings in case the format function doesn't use `offset`.
- * $fmt$: Replaced with `BK_FMT` or whatever you set that macro to be. This printf-like macro is how generated code is meant to output into the provided `dst` buffer (formatting macros usually implicilty use the `dst` parameter) so it is recommended that you only use the $fmt$ directive for output and don't use other functions like `printf`.
+ * `$implguard$`: Generates the `#ifdef BK_IMPLEMENTATION` (or whatever you set the implementation macro to be) implementation guard.
+ * `$endimplguard$`: Generates the matching `#endif` for $implguard$.
+ * `$dst$`: Replaced with `BK_FMT_DST_t` or whatever you set that macro to be.
+ * `$offset$`: Replaced with `BK_OFFSET_t` or whatever you set that macro to be. Most `BK_FMT`/format functions expect a variable of type `$offset$` named `offset` to be in scope. We used the `(void)offset;` trick in the provided example to suppress unused variable warnings in case the format function doesn't use `offset`.
+ * `$fmt$`: Replaced with `BK_FMT` or whatever you set that macro to be. This printf-like macro is how generated code is meant to output into the provided `dst` buffer (formatting macros usually implicilty use the `dst` parameter) so it is recommended that you only use the `$fmt$` directive for output and don't use other functions like `printf`.
 
 Now we can move on to for loops:
 ```c
@@ -155,9 +155,9 @@ void dump_dynamic_MyStruct(MyStruct* item, BK_FMT_DST_t dst) {
 As you can see, we ended up with three "Hello, World!"s since `MyStruct` has three fields.
 
 For loops bring some extra directives into scope that can **only be used in for loops**. These are:
- * $it$: Replaced with the name of the field in the current iteration (short for iterator). Can be used like item->$it$ to access fields.
- * $it.type$: If $it$ is an 'external field', which just means that $it$ is not of a primitive type, you can use $it.type$ to get its type. This is how `bookkeeper` is able to seamlessly support nested types. This directive is commonly used as `dump_dynamic_$it.type$(&item->$it$, dst)` to call the correct generated function for this field.
- * $tag$: Replaced with the tag of the field in the current iteration. Is equal to $it$ if the field doesn't have a `tag` attribute in the type's definition.
+ * `$it$`: Replaced with the name of the field in the current iteration (short for iterator). Can be used like `item->$it$` to access fields.
+ * `$it.type$`: If `$it$` is an 'external field', which just means that `$it$` is not of a primitive type, you can use `$it.type$` to get its type. This is how `bookkeeper` is able to seamlessly support nested types. This directive is commonly used as `dump_dynamic_$it.type$(&item->$it$, dst)` to call the correct generated function for this field.
+ * `$tag$`: Replaced with the tag of the field in the current iteration. Is equal to `$it$` if the field doesn't have a `tag` attribute in the type's definition.
 
 If statements are also directives that can only be used inside for loops. They are usually used to check the type of the current field.
 ```c
@@ -257,7 +257,7 @@ void dump_dynamic_MyStruct(MyStruct* item, BK_FMT_DST_t dst) {
 A few things to note here:
  - The code *outside* of the if statements was interpreted as-is for every single field.
  - The code *inside* of the if statements was interpreted only if the field's type matched the type in the condition.
- - If we wanted to use $it.type$, we could only do so inside a `$if CEXTERNAL {$ ... $}$` block.
+ - If we wanted to use `$it.type$`, we could only do so inside a `$if CEXTERNAL {$ ... $}$` block.
 
 Another use for if statements is checking the current field's index. For example:
 ```c
@@ -270,24 +270,24 @@ $for ty {$
 $}$
 /* ... */
 ```
-In this case, the $fmt$ statement inside of the if statement would only get interpreted for the *first field*. This feature is mainly used to differentiate between the starting `if` and `else if`s in a generated if-else if chain. The supported binary operations for this style of if statements are:
+In this case, the `$fmt$` statement inside of the if statement would only get interpreted for the *first field*. This feature is mainly used to differentiate between the starting `if` and `else if`s in a generated if-else if chain. The supported binary operations for this style of if statements are:
  * ==
  * !=
 
 ### Directives Cheatsheet
-  * $implguard$: The `#ifdef BK_IMPLEMENTATION` (or whatever you set the implementation macro to be) implementation guard.
-  * $endimplguard$: The matching `#endif` for $implguard$.
-  * $dumpguard$: The necessary `#ifndef BK_DISABLE_*` guards for dump functions.
-  * $enddumpguard$: The matching `#endif`s for  $dumpguard$.
-  * $ty$: The processed type's name.
-  * $dst$: `BK_FMT_DST_t` or whatever you set that macro to be.
-  * $offset$: `BK_OFFSET_t` or whatever you set that macro to be. Don't forget to put `$offset$ offset = 0; (void)offset;` at the start of your dump functions to avoid errors and unnecessary warnings.
-  * $fmt$: `BK_FMT` or whatever you set that printf-like macro to be.
-  * $for ty {$ ... $}$: Iterates over fields.
-    - $it$: Current field name.
-    - $tag$: Current field tag.
-    - $it.type$: Current field's type's name. Can only be used inside `$if CEXTERNAL {$ ... $}$` blocks.
-    - $if <type> {$ ... $}$: Only interpreted if the current field is of type `<type>`. Valid values for `<type>` are:
+  * `$implguard$`: The `#ifdef BK_IMPLEMENTATION` (or whatever you set the implementation macro to be) implementation guard.
+  * `$endimplguard$`: The matching `#endif` for `$implguard$`.
+  * `$dumpguard$`: The necessary `#ifndef BK_DISABLE_*` guards for dump functions.
+  * `$enddumpguard$`: The matching `#endif`s for  `$dumpguard$`.
+  * `$ty$`: The processed type's name.
+  * `$dst$`: `BK_FMT_DST_t` or whatever you set that macro to be.
+  * `$offset$`: `BK_OFFSET_t` or whatever you set that macro to be. Don't forget to put `$offset$ offset = 0; (void)offset;` at the start of your dump functions to avoid errors and unnecessary warnings.
+  * `$fmt$`: `BK_FMT` or whatever you set that printf-like macro to be.
+  * `$for ty {$ ... $}$`: Iterates over fields.
+    - `$it$`: Current field name.
+    - `$tag$`: Current field tag.
+    - `$it.type$`: Current field's type's name. Can only be used inside `$if CEXTERNAL {$ ... $}$` blocks.
+    - `$if <type> {$ ... $}$`: Only interpreted if the current field is of type `<type>`. Valid values for `<type>` are:
        - CINT
        - CUINT
        - CLONG
@@ -297,5 +297,5 @@ In this case, the $fmt$ statement inside of the if statement would only get inte
        - CBOOL
        - CSTRING
        - CEXTERNAL
-    - $if index == <integer> {$ ... $}$: Only interpreted if the current field's index is equal to the provided number.
-    - $if index != <integer> {$ ... $}$: Only interpreted if the current field's index is not equal to the provided number.
+    - `$if index == <integer> {$ ... $}$`: Only interpreted if the current field's index is equal to the provided number.
+    - `$if index != <integer> {$ ... $}$`: Only interpreted if the current field's index is not equal to the provided number.
