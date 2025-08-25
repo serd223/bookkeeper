@@ -1,6 +1,6 @@
 # Extensions
 
-`bookkeeper` supports 'static' and 'dynamic' extensions. Static extensions directly wrap [`bk.c`](../bk.c) and bake new extensions directly into the executable while dynamic extensions consists of files in the `.schema` format (basically C but with extra preprocesssing) which are loaded and interpreted during `bookkeeper`'s runtime.
+`bookkeeper` supports ['static'](#static-schema-extensions) and ['dynamic'](#dynamic-schema-extensions) extensions. Static extensions directly wrap [`bk.c`](../bk.c) and bake new extensions directly into the executable while dynamic extensions are **zero build plugins** that consist of files in the `.schema` format (basically C but with extra preprocesssing) which are loaded and interpreted during `bookkeeper`'s runtime.
 
 Static extensions *require* you to adapt your build system to them which makes them harder to integrate into already existing projects. Though static extensions have way better performance (performance as in the speed of *generating* code, not the speed of generated code) compared to dynamic ones since they don't need to interpret any files during runtime.
 
@@ -49,9 +49,11 @@ After writing your wrapper, you can compile your wrapper code ("bk_wrap.c" in th
 ## Dynamic Schema Extensions
 You can include your `.schema` files via the [command line](./usage.md#command-line-options) or [configuration files](./config.md), included schema files will be loaded and ready to use just like any other schema.
 
-The code for the schema of `bookkeeper`'s config files, bkconf, is actually written as a dynamic schema extension! After reading this section, you can check out [its schema code inside the examples directory](../examples/bkconf.schema) for a sort of real world example.
+The code for the schema of `bookkeeper`'s config files, bkconf, is actually written as a dynamic schema extension! After reading this section, you can check out [its schema code inside the examples directory](../examples/bkconf.schema) for a sort of real world example. Try tweaking the schema file and generating the `bkconf` code with `bk -i bk.c -is ./examples/bkconf.schema -o .` while in the root of the repository and look around the generated code inside `bk.c.bk.h`!
 
 Writing `.schema` files is pretty similar to writing static schema extensions, the main difference is that instead of using the internal `bookkeeper` API to automate certain things, you use special 'directives' directly in your code instead.
+
+See the [Directives Cheatsheet](#directives-cheatsheet) for a short list of all directives.
 
 Each dynamic schema file must start with a `name` and then a `derive` field.
 
@@ -255,7 +257,7 @@ void dump_dynamic_MyStruct(MyStruct* item, BK_FMT_DST_t dst) {
 A few things to note here:
  - The code *outside* of the if statements was interpreted as-is for every single field.
  - The code *inside* of the if statements was interpreted only if the field's type matched the type in the condition.
- - If we wanted to use $it.type$, we could only do so inside a `$if CEXTERNAL {$` block.
+ - If we wanted to use $it.type$, we could only do so inside a `$if CEXTERNAL {$ ... $}$` block.
 
 Another use for if statements is checking the current field's index. For example:
 ```c
@@ -271,3 +273,29 @@ $}$
 In this case, the $fmt$ statement inside of the if statement would only get interpreted for the *first field*. This feature is mainly used to differentiate between the starting `if` and `else if`s in a generated if-else if chain. The supported binary operations for this style of if statements are:
  * ==
  * !=
+
+### Directives Cheatsheet
+  * $implguard$: The `#ifdef BK_IMPLEMENTATION` (or whatever you set the implementation macro to be) implementation guard.
+  * $endimplguard$: The matching `#endif` for $implguard$.
+  * $dumpguard$: The necessary `#ifndef BK_DISABLE_*` guards for dump functions.
+  * $enddumpguard$: The matching `#endif`s for  $dumpguard$.
+  * $ty$: The processed type's name.
+  * $dst$: `BK_FMT_DST_t` or whatever you set that macro to be.
+  * $offset$: `BK_OFFSET_t` or whatever you set that macro to be. Don't forget to put `$offset$ offset = 0; (void)offset;` at the start of your dump functions to avoid errors and unnecessary warnings.
+  * $fmt$: `BK_FMT` or whatever you set that printf-like macro to be.
+  * $for ty {$ ... $}$: Iterates over fields.
+    - $it$: Current field name.
+    - $tag$: Current field tag.
+    - $it.type$: Current field's type's name. Can only be used inside `$if CEXTERNAL {$ ... $}$` blocks.
+    - $if <type> {$ ... $}$: Only interpreted if the current field is of type `<type>`. Valid values for `<type>` are:
+       - CINT
+       - CUINT
+       - CLONG
+       - CULONG
+       - CCHAR
+       - CFLOAT
+       - CBOOL
+       - CSTRING
+       - CEXTERNAL
+    - $if index == <integer> {$ ... $}$: Only interpreted if the current field's index is equal to the provided number.
+    - $if index != <integer> {$ ... $}$: Only interpreted if the current field's index is not equal to the provided number.
