@@ -64,7 +64,7 @@ typedef struct {
     /* fields */
 } MyStruct derive_json();
 ```
-`derive_*` and `tag` are special 'attribute macros' that allows you to tell bookkeeper what to generate directly from your code. These macros expand to nothing and are located inside the generated `output-directory/derives.h` file, you may acquire this file by doing an 'empty run' with `bk -o <output-directory>`.
+`derive_*` and `tag` are special 'attribute macros' that allow you to tell bookkeeper what to generate directly from your code. These macros expand to nothing and are located inside the generated `output-directory/derives.h` file, you may acquire this file by doing an 'empty run' with `bk -o <output-directory>`.
 
 The `tag` attribute allows you to customize the generated/expected name of a specific field. In this case, the generated JSON structure will contain a "SomeField" field instead of a "some_field" field. This is also the same for parsing, a "SomeField" field will be expected inside of the JSON source instead of a "some_field" field.
 
@@ -107,7 +107,6 @@ The behavior of generated code can be tweaked with defining/redefining certain m
     - `BK_DISABLE_$schema$`: Disables all functionality that works on $schema$.
     - `BK_DISABLE_$schema$_DUMP`: Disables dump functionality that works on $schema$.
     - `BK_DISABLE_$schema$_PARSE`: Disables parse functionality that works on $schema$.
-  * You can also use the `--disabled` flag with `bk` to make all functionality disabled by default. In this mode, you can use the same macros listed above with the `enable-prefix` instead of `disable-prefix`. `enable-prefix` defaults to `BK_ENABLE_`
 
 The names of the special generated macros mentioned above (like `BK_FMT`) can all be customized via [command line options](#command-line-options) or [configuration files](./config.md).
 
@@ -136,12 +135,7 @@ dump_json(&m, stdout); // generic macro
 In this case, the generic macro call will expand to `dump_json_MyStruct((&m), (stdout))`.
 
 >[!WARNING]
-> The current state of generics in `bk` is very much experimental and they don't play well with ENABLE/DISABLE macros. The generated code contains a lot of macro trickery to enable/disable types depending on if they were already included or not. That is necessary because the compiler doesn't just ignore unknown types in generic macros. Since we need to put all analyzed types in a single huge generic macro and we can't expect users to bring all analyzed types into scope just to use generic macros, we resort to preprocessor black magic. Another caveat with the current generics is that they assume that all schemas will respect the `dump/parse_$schema$_$type$` convention of naming their generated functions.
-
-## Advanced usage
-
->[!WARNING]
-> This section is incomplete. TODO: mention disable macros, disabled by default mode, etc.
+> The current state of generics in `bk` is very much experimental and they don't play well with DISABLE macros. The generated code contains a lot of macro trickery to enable/disable types depending on if they were already included or not. That is necessary because the compiler doesn't just ignore unknown types in generic macros. Since we need to put all analyzed types in a single huge generic macro and we can't expect users to bring all analyzed types into scope just to use generic macros, we resort to preprocessor black magic. Another caveat with the current generics is that they assume that all schemas will respect the `dump/parse_$schema$_$type$` convention of naming their generated functions.
 
 ## Command line options
 

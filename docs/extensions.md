@@ -107,7 +107,7 @@ $endimplguard$
 ```
 Here we see many new special directives, let's break them down one by one. Starting with the simpler ones:
  * `$implguard$`: Generates the `#ifdef BK_IMPLEMENTATION` (or whatever you set the implementation macro to be) implementation guard.
- * `$endimplguard$`: Generates the matching `#endif` for $implguard$.
+ * `$endimplguard$`: Generates the matching `#endif` for `$implguard$`.
  * `$dst$`: Replaced with `BK_FMT_DST_t` or whatever you set that macro to be.
  * `$offset$`: Replaced with `BK_OFFSET_t` or whatever you set that macro to be. Most `BK_FMT`/format functions expect a variable of type `$offset$` named `offset` to be in scope. We used the `(void)offset;` trick in the provided example to suppress unused variable warnings in case the format function doesn't use `offset`.
  * `$fmt$`: Replaced with `BK_FMT` or whatever you set that macro to be. This printf-like macro is how generated code is meant to output into the provided `dst` buffer (formatting macros usually implicilty use the `dst` parameter) so it is recommended that you only use the `$fmt$` directive for output and don't use other functions like `printf`.
