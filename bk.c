@@ -1307,13 +1307,13 @@ static Command commands[] = {
         .desc = "Disables the generation of `parse` functions",
         .exec_c = disable_parse_cmd
     },
-    {
-        .name = "disabled",
-        .flag = "--disabled",
-        .usage = "--disabled",
-        .desc = "Disables all functionality by default. They can be enabled gradually in code with `ENABLE` macros.",
-        .exec_c = disabled_cmd
-    },
+    // {
+    //     .name = "disabled",
+    //     .flag = "--disabled",
+    //     .usage = "--disabled",
+    //     .desc = "Disables all functionality by default. They can be enabled gradually in code with `ENABLE` macros.",
+    //     .exec_c = disabled_cmd
+    // },
     {
         .name = "gen-implementation",
         .flag = "--gen-implementation",

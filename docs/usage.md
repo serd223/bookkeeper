@@ -225,10 +225,6 @@ In this case, the generic macro call will expand to `dump_json_MyStruct((&m), (s
    - Usage: `--disable-parse`
    - Description: Disables the generation of `parse` functions
 
- * disabled:
-   - Usage: `--disabled`
-   - Description: Disables all functionality by default. They can be enabled gradually in code with `ENABLE` macros.
-
  * gen-implementation
    - Usage: `--gen-implementation <name>`
    - Description: Sets the macro that will be used in the generated code to control enabling implementation (`BK_IMPLEMENTATION`)
