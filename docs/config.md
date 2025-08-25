@@ -14,7 +14,7 @@ Values can be integers, floats, strings, or booleans (denoted with `true` and `f
 
 Since command line flags and config options are mostly the same, you can see the [`Usage section`](./usage.md#command-line-options) for descriptions that explain what each key means.
 
-A notable exception to this is `include-files` vs `-i`. `-i` accepts a single file and you supply multiple `-i` flags when you want to include multiple files. On the other hand, the `include-files` option accepts a comma separated list of files (like 'file1,file2,file3').
+A notable exception to this is `include_files` vs `-i`. `-i` accepts a single file and you supply multiple `-i` flags when you want to include multiple files. On the other hand, the `include_files` option accepts a comma separated list of files (like 'file1,file2,file3'). The same also applies to `schema_files` vs `-is`.
 
 When in doubt, see [full_config.conf](../examples/full_config.conf) for a list of all valid keys.
 
