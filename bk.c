@@ -1603,7 +1603,11 @@ int main(int argc, char** argv) {
                     Entry e = {
                         .full = in_file,
                         .name = strdup(ent->d_name), // alloc
+                        #if !defined(_POSIX_C_SOURCE) || defined(_DARWIN_C_SOURCE)
+                        .sys_modif = s.st_mtimespec.tv_sec,
+                        #else
                         .sys_modif = s.st_mtim.tv_sec,
+                        #endif
                         .last_analyzed = 0
                     };
                     push_da(&bk.entries, e);
@@ -1632,7 +1636,11 @@ int main(int argc, char** argv) {
             {
                 struct stat s = {0};
                 stat(in_file->full, &s);
+                #if !defined(_POSIX_C_SOURCE) || defined(_DARWIN_C_SOURCE)
+                in_file->sys_modif = s.st_mtimespec.tv_sec;
+                #else
                 in_file->sys_modif = s.st_mtim.tv_sec;
+                #endif
             }
             if (in_file->sys_modif > in_file->last_analyzed) {
                 unsigned long in_hash = djb2(in_file->full);
@@ -2063,7 +2071,11 @@ __BK_API bool entry_from_file(const char* file_name, Entry* out) {
     stat(real, &s);
     out->full = real;
     out->name = strdup(file_name); // alloc
+    #if !defined(_POSIX_C_SOURCE) || defined(_DARWIN_C_SOURCE)
+    out->sys_modif = s.st_mtimespec.tv_sec;
+    #else
     out->sys_modif = s.st_mtim.tv_sec;
+    #endif
     out->last_analyzed = 0;
 
     return true;
