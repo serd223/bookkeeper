@@ -58,7 +58,7 @@ And this is how you can build it:
 As C programmers we find ourselves constantly writing boilerplate code for parsing some config struct, or just simply printing any struct. C lacks the necessary metaprogramming tools to automate the generation of this kind of boilerplate code (unlike more modern languages where you can do `#derive(Debug)` or `deriving Show`). So we either write it by hand every single time (too much work), ask LLMs to write the code for us (unreliable and requires code review), or use code generation tools like `bookkeeper`. `bookkeeper` aims to be an easy to use, extendible, user friendly, embedded friendly and portable solution to this problem.
 
 >[!WARNING]
-> Although bookkeeper aims to be all of those things, it is still somewhat early in development and the tool itself only supports Linux. The generated code is mostly embedded friendly and portable, though.
+> Although bookkeeper aims to be all of those things, it is still somewhat early in development and the tool itself only supports Linux and macOS. The generated code is mostly embedded friendly and portable, though.
 
 # Overview
 The `bk` tool requires an output directory and (optional) input file(s). The output directory can be specified with `-o`. Then you can either supply files one by one with the `-i` flag (like `-i file1 -i file`), or you can supply an input directory with `-I` and the tool will scan that directory for any `.c` or `.h` files. `bk` analyzes the included files and collects all `typedef struct { field_type field; } StructName` style struct definitions. Each struct can 'derive' functionalities that will be included in the generated code. For instance, if you want your struct to support JSON parsing/dumping you would write:
