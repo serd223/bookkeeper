@@ -1640,12 +1640,12 @@ int main(int argc, char** argv) {
                 file_buf.len = 0;
                 if (!read_entire_file(in_file->full, &file_buf)) continue;
 
-                for (size_t i = 0; i < types.len; ++i) {
-                    push_da(&all_types, types.items[i]);
-                };
                 types.len = 0;
                 analyze_file(in_file->name, file_buf, &types, bk.conf.derive_all);
                 bk_log(LOG_INFO, "Analayzed %lu type(s).\n", types.len);
+                for (size_t i = 0; i < types.len; ++i) {
+                    push_da(&all_types, types.items[i]);
+                };
                 book_buf.len = 0;
                 current_iter = time(NULL);
                 in_file->last_analyzed = current_iter;
@@ -1824,11 +1824,6 @@ int main(int argc, char** argv) {
     } while(bk.conf.watch_mode);
 
     __bk_cleanup:
-    if (types.items != NULL) {
-        for (size_t i = 0; i < types.len; ++i) free_ccompund(types.items[i]);
-        free(types.items);
-    }
-
     if (all_types.items != NULL) {
         for (size_t i = 0; i < all_types.len; ++i) free_ccompund(all_types.items[i]);
         free(all_types.items);
